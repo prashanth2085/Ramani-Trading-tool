@@ -13,46 +13,40 @@ def calculate_rsi(prices, window=14):
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
-st.write("Ramani's Core Rules + RSI + EMA + Volume Analysis")
+st.write("Ramani's Core Rules + RSI + EMA + Volume + Stop-Loss")
 
 # 2. Create the User Input Form
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     ticker_symbol = st.text_input("Ticker Symbol (Add .NS)", value="TATAPOWER.NS")
 with col2:
     avg_price = st.number_input("Average Buy Price (₹)", value=384.75, step=1.0)
 with col3:
     quantity = st.number_input("Quantity Held", value=6, step=1)
+with col4:
+    stop_loss = st.number_input("Max Stop-Loss Limit (%)", value=-40.0, step=5.0)
 
 # 3. The "Analyze" Button Logic
 if st.button("🔍 Analyze Live Market", type="primary"):
     with st.spinner("Fetching live data from National Stock Exchange..."):
         try:
-            # Fetch 1 Year of Data (Needed for 50-EMA)
             ticker = yf.Ticker(ticker_symbol)
             hist = ticker.history(period="1y")
             
             if hist.empty:
                 st.error("❌ Could not find that ticker. Did you forget the '.NS'?")
             else:
-                # --- CALCULATE ALL INDICATORS ---
                 current_price = hist['Close'].iloc[-1]
-                
-                # RSI
                 hist['RSI'] = calculate_rsi(hist['Close'])
                 current_rsi = hist['RSI'].iloc[-1]
-                
-                # 50-Day EMA
                 hist['EMA_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
                 current_ema = hist['EMA_50'].iloc[-1]
                 
-                # Volume Analysis (Compare today to 20-day average)
                 hist['Avg_Vol_20'] = hist['Volume'].rolling(window=20).mean()
                 current_vol = hist['Volume'].iloc[-1]
                 avg_vol = hist['Avg_Vol_20'].iloc[-1]
                 high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (avg_vol * 1.5))
                 
-                # Ramani's % Change
                 change_pct = ((current_price - avg_price) / avg_price) * 100
                 
                 # --- DISPLAY LIVE STATS ---
@@ -61,7 +55,6 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 stat1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Buy")
                 stat2.metric("Current RSI", f"{current_rsi:.2f}", "Under 40 is Cheap" if current_rsi < 40 else "Over 70 is Expensive" if current_rsi > 70 else "Neutral")
                 stat3.metric("50-Day EMA", f"₹{current_ema:.2f}", "Bullish Trend" if current_price > current_ema else "Bearish Trend")
-                
                 vol_status = "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume"
                 stat4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", vol_status)
                 st.divider()
@@ -69,22 +62,38 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 # --- MULTI-FACTOR CONFLICT RESOLUTION ---
                 st.subheader("⚖️ Today's Action Plan")
                 
-                # BUY LOGIC
-                if change_pct <= -15:
+                # 1. STOP-LOSS LOGIC (Overrides everything else)
+                if change_pct <= stop_loss:
+                    st.error(f"🚨 **EMERGENCY ACTION: STOP-LOSS TRIGGERED. SELL ALL {quantity} SHARES.**")
+                    st.write(f"Reason: The stock has crashed past your hard limit of {stop_loss}%. Cut your losses now to protect your remaining capital.")
+                
+                # 2. BUY LOGIC
+                elif change_pct <= -15:
                     if high_volume_dump:
                         st.error("🛑 **ACTION: DANGER - DO NOT BUY YET.**")
-                        st.write("Reason: Price dropped 15%, but it is crashing on MASSIVE volume. Big players are dumping. Wait for it to settle.")
+                        st.write("Reason: Price dropped, but it is crashing on MASSIVE volume. Big players are dumping. Wait for it to settle.")
                     elif current_rsi > 50 and current_price < current_ema:
                         st.warning("⏸️ **ACTION: PAUSE BUY.**")
-                        st.write("Reason: Price dropped 15%, but the trend is broken (below 50-EMA) and RSI isn't cheap enough yet. Wait.")
+                        st.write("Reason: Price dropped to your buying tier, but the trend is broken (below 50-EMA) and RSI isn't cheap enough yet. Wait.")
                     else:
-                        qty_to_buy = max(1, int(quantity * (0.25 if change_pct <= -25 else 0.10)))
+                        if change_pct <= -35:
+                            share_pct = 0.30
+                        elif change_pct <= -25:
+                            share_pct = 0.25
+                        else:
+                            share_pct = 0.10
+                            
+                        qty_to_buy = max(1, int(quantity * share_pct))
                         st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.**")
-                        st.write("Reason: Price dropped to your buying tier, RSI shows it is oversold, and volume is safe. Perfect dip buy.")
+                        
+                        if current_rsi < 40:
+                            st.write("Reason: Price dropped into a buying tier, RSI is cheap (oversold), and volume is safe. Perfect dip buy.")
+                        else:
+                            st.write("Reason: Price dropped into a buying tier. RSI isn't completely oversold, but the price is in a Bullish Trend (above 50-EMA). Safe to buy.")
                 
-                # SELL LOGIC
+                # 3. SELL LOGIC (Taking Profits)
                 elif change_pct >= 25:
-                    if current_rsi > 70 and current_price > (current_ema * 1.15): # 15% extended from EMA
+                    if current_rsi > 70 and current_price > (current_ema * 1.15): 
                          qty_to_sell = quantity if change_pct >= 100 else max(1, int(quantity * (0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10)))
                          st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.**")
                          st.write("Reason: Hit profit target, RSI is overbought, and price is overextended far above the 50-EMA. Lock in profit.")
@@ -92,7 +101,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                          st.info("💎 **ACTION: HOLD YOUR WINNER.**")
                          st.write("Reason: Hit profit target, but the trend is still strong and healthy. Let your winners run.")
                 
-                # HOLD LOGIC
+                # 4. HOLD LOGIC
                 else:
                     st.info("🧘 **ACTION: HOLD PATIENTLY.**")
                     st.write("Reason: Price hasn't moved enough to trigger Ramani's rules. Ignore the market noise.")
@@ -102,6 +111,8 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 # --- FUTURE TARGETS (CHEAT SHEET) ---
                 st.subheader("🎯 Future Price Targets & Trades")
                 rules = [
+                    {"pct": stop_loss, "action": "🚨 STOP-LOSS (SELL ALL)", "share_pct": 100},
+                    {"pct": -35, "action": "Buy", "share_pct": 30},
                     {"pct": -25, "action": "Buy", "share_pct": 25},
                     {"pct": -15, "action": "Buy", "share_pct": 10},
                     {"pct": 25, "action": "Sell", "share_pct": 10},
@@ -111,16 +122,18 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                     {"pct": 100, "action": "Sell", "share_pct": 100}
                 ]
                 
+                # Clean up the table to only show relevant rules (e.g. don't show buy rules that are below the stop loss)
                 target_data = []
                 for r in rules:
-                    target_price = avg_price * (1 + (r["pct"]/100))
-                    trade_qty = max(1, int(quantity * (r["share_pct"]/100)))
-                    target_data.append({
-                        "Trigger Level (%)": f"{'+' if r['pct']>0 else ''}{r['pct']}%",
-                        "Target Price (₹)": f"₹{target_price:.2f}",
-                        "Action": r["action"],
-                        "Shares to Trade": f"{trade_qty} shares"
-                    })
+                    if r["pct"] > stop_loss or r["action"] == "🚨 STOP-LOSS (SELL ALL)":
+                        target_price = avg_price * (1 + (r["pct"]/100))
+                        trade_qty = max(1, int(quantity * (r["share_pct"]/100)))
+                        target_data.append({
+                            "Trigger Level (%)": f"{'+' if r['pct']>0 else ''}{r['pct']}%",
+                            "Target Price (₹)": f"₹{target_price:.2f}",
+                            "Action": r["action"],
+                            "Shares to Trade": f"{quantity} shares" if "STOP-LOSS" in r["action"] else f"{trade_qty} shares"
+                        })
                 
                 st.table(pd.DataFrame(target_data))
 
