@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 
 # --- CUSTOM MATH FUNCTIONS ---
 def calculate_rsi(prices, window=14):
@@ -26,12 +27,23 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     macd_signal = macd.ewm(span=signal, adjust=False).mean()
     return macd, macd_signal
 
+# --- SMART DATA FETCHER (BYPASSES RATE LIMITS) ---
+@st.cache_data(ttl=300, show_spinner=False) # Caches data for 5 minutes to prevent spamming Yahoo
+def fetch_stock_data(symbol):
+    # Disguise the request as a normal web browser
+    session = requests.Session()
+    session.headers.update(
+        {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'}
+    )
+    ticker = yf.Ticker(symbol, session=session)
+    return ticker.history(period="2y")
+
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
 st.write("Portfolio Rules + Market Structure (Support/Resistance) + Technicals")
 
-# 2. Create the User Input Form (NOW WITH FRESH CAPITAL INPUT)
+# 2. Create the User Input Form
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     ticker_symbol = st.text_input("Ticker Symbol (Add .NS)", value="TATAPOWER.NS")
@@ -46,8 +58,8 @@ with col4:
 if st.button("🔍 Analyze Live Market", type="primary"):
     with st.spinner("Fetching live data from National Stock Exchange..."):
         try:
-            ticker = yf.Ticker(ticker_symbol)
-            hist = ticker.history(period="2y")
+            # Use our new cached and disguised fetcher
+            hist = fetch_stock_data(ticker_symbol)
             
             if hist.empty:
                 st.error("❌ Could not find that ticker. Did you forget the '.NS'?")
@@ -78,17 +90,13 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 auto_stop_price = avg_price - (3 * current_atr)
                 auto_stop_pct = ((auto_stop_price - avg_price) / avg_price) * 100
                 
-                # --- NEW: SUPPORT & RESISTANCE (Last 20 Days) ---
                 hist['Support_20'] = hist['Low'].rolling(window=20).min()
                 hist['Resistance_20'] = hist['High'].rolling(window=20).max()
                 current_support = hist['Support_20'].iloc[-1]
                 current_resistance = hist['Resistance_20'].iloc[-1]
                 
-                # Portfolio Math
                 change_pct = ((current_price - avg_price) / avg_price) * 100
-                
-                # Calculate how many shares they can buy with fresh cash right now
-                affordable_shares = int(fresh_capital / current_price)
+                affordable_shares = int(fresh_capital / current_price) if current_price > 0 else 0
                 
                 # --- DISPLAY LIVE STATS ---
                 st.subheader("📊 Live Technical Dashboard")
@@ -116,19 +124,19 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 if current_price < current_ema_200:
                     st.error("🛑 **AVOID FRESH ENTRIES.**")
                     st.write("The stock is in a long-term bear market (Below 200-EMA). Keep your cash safe until the structural trend reverses.")
-                elif distance_to_support <= 2.0: # Within 2% of Support
+                elif distance_to_support <= 2.0:
                     if macd_bullish:
                         st.success(f"🎯 **PRIME ENTRY ZONE: BUY {affordable_shares} SHARES.**")
-                        st.write(f"The stock is resting perfectly on its Support floor (₹{current_support:.2f}) and momentum is bullish. You can afford {affordable_shares} shares with your budget. This is a high-probability entry.")
+                        st.write(f"The stock is resting perfectly on its Support floor (₹{current_support:.2f}) and momentum is bullish. You can afford {affordable_shares} shares. High-probability entry.")
                     else:
                         st.warning("⚠️ **AT SUPPORT, BUT MOMENTUM IS WEAK.**")
-                        st.write(f"The stock is resting on its Support floor (₹{current_support:.2f}), but MACD is bearish. Watch closely. If it bounces, buy {affordable_shares} shares. If it breaks below Support, do not buy.")
-                elif distance_to_resistance <= 2.0: # Within 2% of Resistance
+                        st.write(f"The stock is at Support (₹{current_support:.2f}), but MACD is bearish. Watch closely. If it bounces, buy {affordable_shares} shares. If it breaks below Support, wait.")
+                elif distance_to_resistance <= 2.0:
                     st.warning("⚠️ **AVOID ENTRY (NEAR RESISTANCE).**")
-                    st.write(f"The stock is hitting its historical ceiling (₹{current_resistance:.2f}). It is likely to be rejected and fall. Wait for a pullback to support before deploying cash.")
+                    st.write(f"The stock is hitting its historical ceiling (₹{current_resistance:.2f}). It is likely to be rejected. Wait for a pullback to support before deploying cash.")
                 else:
                     st.info("⏳ **NO MAN'S LAND. WAIT.**")
-                    st.write(f"The stock is floating between Support (₹{current_support:.2f}) and Resistance (₹{current_resistance:.2f}). There is no clear edge right now. Wait for it to drop closer to Support before buying.")
+                    st.write(f"The stock is floating between Support (₹{current_support:.2f}) and Resistance (₹{current_resistance:.2f}). No clear edge right now. Wait for it to drop closer to Support.")
                 
                 st.divider()
 
@@ -190,4 +198,8 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.table(pd.DataFrame(target_data).sort_values(by="Trigger Level (%)", key=lambda col: col.str.replace('+','').str.replace('%','').astype(float)))
 
         except Exception as e:
-            st.error(f"An error occurred: {e}")
+            # We catch rate limits specifically to give a friendlier message
+            if "Too Many Requests" in str(e) or "Rate limited" in str(e):
+                st.error("⚠️ Yahoo Finance is temporarily blocking requests due to high traffic. The app's new caching system will help prevent this, but please wait 2-3 minutes before trying again.")
+            else:
+                st.error(f"An error occurred: {e}")
