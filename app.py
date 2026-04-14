@@ -29,22 +29,23 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
-st.write("Ramani's Core Rules + RSI + 50/200 EMA + MACD + Volume + ATR Stop-Loss")
+st.write("Portfolio Rules + Market Structure (Support/Resistance) + Technicals")
 
-# 2. Create the User Input Form
-col1, col2, col3 = st.columns(3)
+# 2. Create the User Input Form (NOW WITH FRESH CAPITAL INPUT)
+col1, col2, col3, col4 = st.columns(4)
 with col1:
     ticker_symbol = st.text_input("Ticker Symbol (Add .NS)", value="TATAPOWER.NS")
 with col2:
     avg_price = st.number_input("Average Buy Price (₹)", value=384.75, step=1.0)
 with col3:
     quantity = st.number_input("Quantity Held", value=6, step=1)
+with col4:
+    fresh_capital = st.number_input("Fresh Capital Available (₹)", value=10000, step=1000)
 
 # 3. The "Analyze" Button Logic
 if st.button("🔍 Analyze Live Market", type="primary"):
     with st.spinner("Fetching live data from National Stock Exchange..."):
         try:
-            # Fetch 2 Years of Data (Needed for a stable 200-EMA)
             ticker = yf.Ticker(ticker_symbol)
             hist = ticker.history(period="2y")
             
@@ -54,104 +55,109 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 current_price = hist['Close'].iloc[-1]
                 
                 # --- CALCULATE INDICATORS ---
-                # RSI
                 hist['RSI'] = calculate_rsi(hist['Close'])
                 current_rsi = hist['RSI'].iloc[-1]
                 
-                # EMAs
                 hist['EMA_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
                 current_ema_50 = hist['EMA_50'].iloc[-1]
-                
                 hist['EMA_200'] = hist['Close'].ewm(span=200, adjust=False).mean()
                 current_ema_200 = hist['EMA_200'].iloc[-1]
                 
-                # MACD
                 macd, macd_signal = calculate_macd(hist['Close'])
                 current_macd = macd.iloc[-1]
                 current_signal = macd_signal.iloc[-1]
                 macd_bullish = current_macd > current_signal
                 
-                # Volume
                 hist['Avg_Vol_20'] = hist['Volume'].rolling(window=20).mean()
                 current_vol = hist['Volume'].iloc[-1]
                 avg_vol = hist['Avg_Vol_20'].iloc[-1]
                 high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (avg_vol * 1.5))
                 
-                # ATR (Stop-Loss)
                 hist['ATR'] = calculate_atr(hist)
                 current_atr = hist['ATR'].iloc[-1]
                 auto_stop_price = avg_price - (3 * current_atr)
                 auto_stop_pct = ((auto_stop_price - avg_price) / avg_price) * 100
                 
+                # --- NEW: SUPPORT & RESISTANCE (Last 20 Days) ---
+                hist['Support_20'] = hist['Low'].rolling(window=20).min()
+                hist['Resistance_20'] = hist['High'].rolling(window=20).max()
+                current_support = hist['Support_20'].iloc[-1]
+                current_resistance = hist['Resistance_20'].iloc[-1]
+                
                 # Portfolio Math
                 change_pct = ((current_price - avg_price) / avg_price) * 100
+                
+                # Calculate how many shares they can buy with fresh cash right now
+                affordable_shares = int(fresh_capital / current_price)
                 
                 # --- DISPLAY LIVE STATS ---
                 st.subheader("📊 Live Technical Dashboard")
                 
-                # Row 1
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
                 r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Buy")
                 r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Under 40 is Cheap" if current_rsi < 40 else "Over 70 is Expensive" if current_rsi > 70 else "Neutral")
-                r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish Crossover" if macd_bullish else "Bearish Momentum", delta_color="normal" if macd_bullish else "inverse")
-                vol_status = "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume"
-                r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", vol_status)
+                r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
+                r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume")
                 
-                # Row 2
                 r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
                 r2_c1.metric("50-Day EMA (Medium Trend)", f"₹{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
                 r2_c2.metric("200-Day EMA (Long Trend)", f"₹{current_ema_200:.2f}", "Bull Market" if current_price > current_ema_200 else "Bear Market")
-                r2_c3.metric("Auto Stop-Loss (3x ATR)", f"₹{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
+                r2_c3.metric("20-Day Support (Floor)", f"₹{current_support:.2f}")
+                r2_c4.metric("20-Day Resistance (Ceiling)", f"₹{current_resistance:.2f}")
                 st.divider()
 
-                # --- MULTI-FACTOR CONFLICT RESOLUTION ---
-                st.subheader("⚖️ Today's Action Plan")
+                # --- FRESH CAPITAL OPPORTUNITIES ---
+                st.subheader("💡 Fresh Capital Opportunities (Market-Anchored)")
+                st.write(f"*Deploying your ₹{fresh_capital} budget based on today's market structure.*")
                 
-                # 1. AUTO STOP-LOSS LOGIC
+                distance_to_support = ((current_price - current_support) / current_support) * 100
+                distance_to_resistance = ((current_resistance - current_price) / current_price) * 100
+                
+                if current_price < current_ema_200:
+                    st.error("🛑 **AVOID FRESH ENTRIES.**")
+                    st.write("The stock is in a long-term bear market (Below 200-EMA). Keep your cash safe until the structural trend reverses.")
+                elif distance_to_support <= 2.0: # Within 2% of Support
+                    if macd_bullish:
+                        st.success(f"🎯 **PRIME ENTRY ZONE: BUY {affordable_shares} SHARES.**")
+                        st.write(f"The stock is resting perfectly on its Support floor (₹{current_support:.2f}) and momentum is bullish. You can afford {affordable_shares} shares with your budget. This is a high-probability entry.")
+                    else:
+                        st.warning("⚠️ **AT SUPPORT, BUT MOMENTUM IS WEAK.**")
+                        st.write(f"The stock is resting on its Support floor (₹{current_support:.2f}), but MACD is bearish. Watch closely. If it bounces, buy {affordable_shares} shares. If it breaks below Support, do not buy.")
+                elif distance_to_resistance <= 2.0: # Within 2% of Resistance
+                    st.warning("⚠️ **AVOID ENTRY (NEAR RESISTANCE).**")
+                    st.write(f"The stock is hitting its historical ceiling (₹{current_resistance:.2f}). It is likely to be rejected and fall. Wait for a pullback to support before deploying cash.")
+                else:
+                    st.info("⏳ **NO MAN'S LAND. WAIT.**")
+                    st.write(f"The stock is floating between Support (₹{current_support:.2f}) and Resistance (₹{current_resistance:.2f}). There is no clear edge right now. Wait for it to drop closer to Support before buying.")
+                
+                st.divider()
+
+                # --- ORIGINAL SECTION: RAMANI'S ACTION PLAN ---
+                st.subheader("⚖️ Ramani's Action Plan (Portfolio-Anchored)")
+                st.write(f"*Managing your existing {quantity} shares based on your average buy price.*")
+                
                 if current_price <= auto_stop_price:
                     st.error(f"🚨 **EMERGENCY ACTION: STOP-LOSS TRIGGERED. SELL ALL {quantity} SHARES.**")
-                    st.write(f"Reason: Price crashed below its natural volatility range (3x ATR). The structural trend is broken. Exit immediately.")
-                
-                # 2. BUY LOGIC
                 elif change_pct <= -15:
                     if high_volume_dump:
                         st.error("🛑 **ACTION: DANGER - DO NOT BUY YET.**")
-                        st.write("Reason: Crashing on MASSIVE volume. Big players are dumping. Wait for it to settle.")
-                    
                     elif current_price < current_ema_200 and current_rsi > 30:
                         st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**")
-                        st.write("Reason: Stock is below the 200-Day EMA (Long-term Bear Market). RSI must drop below 30 to justify buying in a bear trend. Wait.")
-                    
                     elif not macd_bullish and current_rsi > 40:
                         st.warning("⏸️ **ACTION: PAUSE BUY (NEGATIVE MOMENTUM).**")
-                        st.write("Reason: Price hit your buying tier, but MACD momentum is still pointing down. Wait for momentum to flatten or turn positive.")
-                        
                     else:
-                        if change_pct <= -35:
-                            share_pct = 0.30
-                        elif change_pct <= -25:
-                            share_pct = 0.25
-                        else:
-                            share_pct = 0.10
-                            
+                        share_pct = 0.30 if change_pct <= -35 else 0.25 if change_pct <= -25 else 0.10
                         qty_to_buy = max(1, int(quantity * share_pct))
-                        st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.**")
-                        st.write("Reason: Price hit your buying tier. Momentum (MACD) and trend support a safe entry. Perfect dip buy.")
-                
-                # 3. SELL LOGIC
+                        st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.** (Ramani Dip Buy)")
                 elif change_pct >= 25:
                     if current_rsi > 70 and current_price > (current_ema_50 * 1.15): 
-                         qty_to_sell = quantity if change_pct >= 100 else max(1, int(quantity * (0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10)))
-                         st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.**")
-                         st.write("Reason: Hit profit target, RSI is overbought, and price is overextended far above the 50-EMA. Lock in profit.")
+                         share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
+                         qty_to_sell = max(1, int(quantity * share_pct))
+                         st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.** (Ramani Profit Taking)")
                     else:
                          st.info("💎 **ACTION: HOLD YOUR WINNER.**")
-                         st.write("Reason: Hit profit target, but the trend is still strong and healthy. Let your winners run.")
-                
-                # 4. HOLD LOGIC
                 else:
-                    st.info("🧘 **ACTION: HOLD PATIENTLY.**")
-                    st.write("Reason: Price hasn't moved enough to trigger Ramani's rules or the ATR Stop-Loss. Ignore the market noise.")
+                    st.info("🧘 **ACTION: HOLD PATIENTLY.** (In the middle zone).")
                     
                 st.divider()
                 
