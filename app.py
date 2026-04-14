@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests
 
 # --- CUSTOM MATH FUNCTIONS ---
 def calculate_rsi(prices, window=14):
@@ -27,15 +26,11 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     macd_signal = macd.ewm(span=signal, adjust=False).mean()
     return macd, macd_signal
 
-# --- SMART DATA FETCHER (BYPASSES RATE LIMITS) ---
-@st.cache_data(ttl=300, show_spinner=False) # Caches data for 5 minutes to prevent spamming Yahoo
+# --- SMART DATA FETCHER (USES BUILT-IN YFINANCE ARMOR + CACHING) ---
+@st.cache_data(ttl=300, show_spinner=False) # Caches data for 5 minutes
 def fetch_stock_data(symbol):
-    # Disguise the request as a normal web browser
-    session = requests.Session()
-    session.headers.update(
-        {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'}
-    )
-    ticker = yf.Ticker(symbol, session=session)
+    # We let yfinance handle the session and rate limits natively now!
+    ticker = yf.Ticker(symbol)
     return ticker.history(period="2y")
 
 # 1. Setup the Webpage
@@ -58,7 +53,6 @@ with col4:
 if st.button("🔍 Analyze Live Market", type="primary"):
     with st.spinner("Fetching live data from National Stock Exchange..."):
         try:
-            # Use our new cached and disguised fetcher
             hist = fetch_stock_data(ticker_symbol)
             
             if hist.empty:
@@ -198,8 +192,4 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.table(pd.DataFrame(target_data).sort_values(by="Trigger Level (%)", key=lambda col: col.str.replace('+','').str.replace('%','').astype(float)))
 
         except Exception as e:
-            # We catch rate limits specifically to give a friendlier message
-            if "Too Many Requests" in str(e) or "Rate limited" in str(e):
-                st.error("⚠️ Yahoo Finance is temporarily blocking requests due to high traffic. The app's new caching system will help prevent this, but please wait 2-3 minutes before trying again.")
-            else:
-                st.error(f"An error occurred: {e}")
+            st.error(f"An error occurred: {e}")
