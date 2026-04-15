@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 
 # --- CUSTOM MATH FUNCTIONS ---
 def calculate_rsi(prices, window=14):
@@ -28,7 +29,6 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
 
 # --- PIVOT POINT CALCULATOR ---
 def calculate_pivots(hist):
-    # Using the previous day's High, Low, and Close to calculate today's pivot ladder
     prev_high = hist['High'].iloc[-2]
     prev_low = hist['Low'].iloc[-2]
     prev_close = hist['Close'].iloc[-2]
@@ -52,7 +52,7 @@ def fetch_stock_data(symbol):
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
-st.write("Portfolio Rules + Pivot Points (S1/R1) + Short/Long Trend + Technicals")
+st.write("Portfolio Rules + Visual Pivot Ladder + Technicals")
 
 # 2. Create the User Input Form
 col1, col2, col3, col4 = st.columns(4)
@@ -76,16 +76,14 @@ if st.button("🔍 Analyze Live Market", type="primary"):
             else:
                 current_price = hist['Close'].iloc[-1]
                 
-                # --- CALCULATE INDICATORS ---
+                # --- CALCULATE ALL INDICATORS ---
                 hist['RSI'] = calculate_rsi(hist['Close'])
                 current_rsi = hist['RSI'].iloc[-1]
                 
-                # Short Term Trend (5 & 20 SMA)
                 hist['SMA_5'] = hist['Close'].rolling(window=5).mean()
                 hist['SMA_20'] = hist['Close'].rolling(window=20).mean()
                 short_term_bullish = hist['SMA_5'].iloc[-1] > hist['SMA_20'].iloc[-1]
                 
-                # Long Term Trend (50 & 200 EMA)
                 hist['EMA_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
                 hist['EMA_200'] = hist['Close'].ewm(span=200, adjust=False).mean()
                 long_term_bullish = current_price > hist['EMA_200'].iloc[-1]
@@ -101,7 +99,6 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 auto_stop_price = avg_price - (3 * hist['ATR'].iloc[-1])
                 auto_stop_pct = ((auto_stop_price - avg_price) / avg_price) * 100
                 
-                # Pivot Points
                 pivot, s1, s2, s3, r1, r2, r3 = calculate_pivots(hist)
                 
                 change_pct = ((current_price - avg_price) / avg_price) * 100
@@ -110,23 +107,59 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 # --- DISPLAY LIVE STATS ---
                 st.subheader("📊 Live Technical Dashboard")
                 
-                # Row 1: Core
+                # Row 1: Core Metrics
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
                 r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Buy")
                 r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Neutral" if 40 <= current_rsi <= 70 else "Oversold/Cheap" if current_rsi < 40 else "Overbought/Expensive")
-                r1_c3.metric("Short Term (5/20 SMA)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
-                r1_c4.metric("Long Term (50/200 EMA)", "Bull Market" if long_term_bullish else "Bear Market", delta_color="normal" if long_term_bullish else "inverse")
+                r1_c3.metric("MACD Momentum", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
+                r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (hist['Avg_Vol_20'].iloc[-1] * 1.5) else "Normal Volume")
                 
-                # Row 2: Pivot Points (The Ladder)
-                st.write("**Today's Pivot Levels (Support & Resistance Ladder)**")
-                p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns(7)
-                p_c1.metric("S3 (Crash Floor)", f"₹{s3:.0f}")
-                p_c2.metric("S2", f"₹{s2:.0f}")
-                p_c3.metric("S1 (Support)", f"₹{s1:.0f}")
-                p_c4.metric("PIVOT (Center)", f"₹{pivot:.0f}")
-                p_c5.metric("R1 (Resistance)", f"₹{r1:.0f}")
-                p_c6.metric("R2", f"₹{r2:.0f}")
-                p_c7.metric("R3 (Breakout)", f"₹{r3:.0f}")
+                # Row 2: Trend & Risk Metrics
+                r2_c1, r2_c2, r2_c3 = st.columns(3)
+                r2_c1.metric("Short Term (5/20 SMA)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
+                r2_c2.metric("Long Term (50/200 EMA)", "Bull Market" if long_term_bullish else "Bear Market", delta_color="normal" if long_term_bullish else "inverse")
+                r2_c3.metric("Auto Stop-Loss (3x ATR)", f"₹{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
+                
+                st.divider()
+
+                # --- VISUAL PIVOT LADDER (PLOTLY) ---
+                st.write("**📍 Today's Pivot Levels (Support & Resistance Ladder)**")
+                
+                fig = go.Figure()
+                
+                # Draw the main line
+                fig.add_trace(go.Scatter(
+                    x=[s3, r3], y=[0, 0], mode="lines",
+                    line=dict(color="gray", width=2), showlegend=False
+                ))
+                
+                # Plot the Pivot Points
+                levels = [s3, s2, s1, pivot, r1, r2, r3]
+                labels = [f"S3<br>₹{s3:.0f}", f"S2<br>₹{s2:.0f}", f"S1<br>₹{s1:.0f}", f"PIVOT<br>₹{pivot:.0f}", f"R1<br>₹{r1:.0f}", f"R2<br>₹{r2:.0f}", f"R3<br>₹{r3:.0f}"]
+                colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] # Red to Green
+                
+                fig.add_trace(go.Scatter(
+                    x=levels, y=[0]*7, mode="markers+text",
+                    marker=dict(color=colors, size=16),
+                    text=labels, textposition="top center", showlegend=False
+                ))
+                
+                # Plot Current Price
+                fig.add_trace(go.Scatter(
+                    x=[current_price], y=[0], mode="markers+text",
+                    marker=dict(color="#00BFFF", size=22, symbol="diamond", line=dict(color='white', width=2)),
+                    text=[f"CURRENT<br>₹{current_price:.2f}"], textposition="bottom center", showlegend=False
+                ))
+                
+                # Layout formatting
+                fig.update_layout(
+                    xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[s3*0.95, r3*1.05]),
+                    yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 1]),
+                    height=200, margin=dict(l=20, r=20, t=40, b=40),
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
                 st.divider()
 
                 # --- FRESH CAPITAL OPPORTUNITIES ---
@@ -143,7 +176,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                     st.warning("⚠️ **REJECTED AT RESISTANCE. DO NOT BUY.**")
                     st.write("The stock is hitting the R1/R2 ceiling and losing short-term momentum. Wait for a pullback to the Pivot or S1.")
                 elif short_term_bullish:
-                    st.info(f"📈 **TRENDING UP: SAFE TO SCALp {affordable_shares} SHARES.**")
+                    st.info(f"📈 **TRENDING UP: SAFE TO SCALP {affordable_shares} SHARES.**")
                     st.write("The stock is between Pivot and R1 with strong momentum. It is safe to ride the wave upward.")
                 else:
                     st.info("⏳ **WAITING FOR A SETUP.**")
