@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import random
 
 # --- CUSTOM MATH FUNCTIONS ---
 def calculate_rsi(prices, window=14):
@@ -52,7 +53,7 @@ def fetch_stock_data(symbol):
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
-st.write("Portfolio Rules + Visual Pivot Ladder + Technicals")
+st.write("Ramani's Core Engine | RSI + MACD + Volume + Pivot Structure")
 
 # 2. Create the User Input Form
 col1, col2, col3, col4 = st.columns(4)
@@ -136,17 +137,17 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 # Draw the THICKER main line
                 fig.add_trace(go.Scatter(
                     x=[s3, r3], y=[0, 0], mode="lines",
-                    line=dict(color="gray", width=5), showlegend=False  # Thicker line here
+                    line=dict(color="gray", width=5), showlegend=False
                 ))
                 
                 # Plot the Pivot Points with larger dots
                 levels = [s3, s2, s1, pivot, r1, r2, r3]
                 labels = [f"S3<br>₹{s3:.0f}", f"S2<br>₹{s2:.0f}", f"S1<br>₹{s1:.0f}", f"PIVOT<br>₹{pivot:.0f}", f"R1<br>₹{r1:.0f}", f"R2<br>₹{r2:.0f}", f"R3<br>₹{r3:.0f}"]
-                colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] # Red to Green
+                colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] 
                 
                 fig.add_trace(go.Scatter(
                     x=levels, y=[0]*7, mode="markers+text",
-                    marker=dict(color=colors, size=20),  # Larger dots here
+                    marker=dict(color=colors, size=20),
                     text=labels, textposition="top center", showlegend=False
                 ))
                 
@@ -252,3 +253,19 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.error("⚠️ Yahoo Finance is rate-limiting. Please wait a few minutes.")
             else:
                 st.error(f"An error occurred: {e}")
+
+# --- MOTIVATIONAL FOOTER ---
+st.write("<br><br>", unsafe_allow_html=True) # Adds some breathing room at the bottom
+quotes = [
+    "\"The elements of good trading are (1) cutting losses, (2) cutting losses, and (3) cutting losses.\" – Ed Seykota",
+    "\"If you cannot control your emotions, you cannot control your money.\" – Warren Buffett",
+    "\"Plan your trade and trade your plan. Trust the math, not your gut.\"",
+    "\"Novices focus on what they can make. Professionals focus on what they can lose.\"",
+    "\"Do not anticipate and move without market confirmation. Being a little late in your trade is your insurance.\" – Jesse Livermore",
+    "\"Let your winners run, and cut your losses quickly.\"",
+    "\"The goal of a successful trader is to make the best trades. Money is secondary.\" – Alexander Elder",
+    "\"Amateurs want to be right. Professionals want to make money.\""
+]
+
+# Display a random quote every time the app runs or is interacted with
+st.markdown(f"> *{random.choice(quotes)}*")
