@@ -26,17 +26,33 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     macd_signal = macd.ewm(span=signal, adjust=False).mean()
     return macd, macd_signal
 
-# --- SMART DATA FETCHER (USES BUILT-IN YFINANCE ARMOR + CACHING) ---
-@st.cache_data(ttl=300, show_spinner=False) # Caches data for 5 minutes
+# --- PIVOT POINT CALCULATOR ---
+def calculate_pivots(hist):
+    # Using the previous day's High, Low, and Close to calculate today's pivot ladder
+    prev_high = hist['High'].iloc[-2]
+    prev_low = hist['Low'].iloc[-2]
+    prev_close = hist['Close'].iloc[-2]
+    
+    pivot = (prev_high + prev_low + prev_close) / 3
+    r1 = (pivot * 2) - prev_low
+    s1 = (pivot * 2) - prev_high
+    r2 = pivot + (prev_high - prev_low)
+    s2 = pivot - (prev_high - prev_low)
+    r3 = prev_high + 2 * (pivot - prev_low)
+    s3 = prev_low - 2 * (prev_high - pivot)
+    
+    return pivot, s1, s2, s3, r1, r2, r3
+
+# --- SMART DATA FETCHER ---
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_data(symbol):
-    # We let yfinance handle the session and rate limits natively now!
     ticker = yf.Ticker(symbol)
     return ticker.history(period="2y")
 
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
-st.write("Portfolio Rules + Market Structure (Support/Resistance) + Technicals")
+st.write("Portfolio Rules + Pivot Points (S1/R1) + Short/Long Trend + Technicals")
 
 # 2. Create the User Input Form
 col1, col2, col3, col4 = st.columns(4)
@@ -55,8 +71,8 @@ if st.button("🔍 Analyze Live Market", type="primary"):
         try:
             hist = fetch_stock_data(ticker_symbol)
             
-            if hist.empty:
-                st.error("❌ Could not find that ticker. Did you forget the '.NS'?")
+            if len(hist) < 200:
+                st.error("❌ Not enough data found for this ticker.")
             else:
                 current_price = hist['Close'].iloc[-1]
                 
@@ -64,30 +80,29 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 hist['RSI'] = calculate_rsi(hist['Close'])
                 current_rsi = hist['RSI'].iloc[-1]
                 
+                # Short Term Trend (5 & 20 SMA)
+                hist['SMA_5'] = hist['Close'].rolling(window=5).mean()
+                hist['SMA_20'] = hist['Close'].rolling(window=20).mean()
+                short_term_bullish = hist['SMA_5'].iloc[-1] > hist['SMA_20'].iloc[-1]
+                
+                # Long Term Trend (50 & 200 EMA)
                 hist['EMA_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
-                current_ema_50 = hist['EMA_50'].iloc[-1]
                 hist['EMA_200'] = hist['Close'].ewm(span=200, adjust=False).mean()
-                current_ema_200 = hist['EMA_200'].iloc[-1]
+                long_term_bullish = current_price > hist['EMA_200'].iloc[-1]
                 
                 macd, macd_signal = calculate_macd(hist['Close'])
-                current_macd = macd.iloc[-1]
-                current_signal = macd_signal.iloc[-1]
-                macd_bullish = current_macd > current_signal
+                macd_bullish = macd.iloc[-1] > macd_signal.iloc[-1]
                 
                 hist['Avg_Vol_20'] = hist['Volume'].rolling(window=20).mean()
                 current_vol = hist['Volume'].iloc[-1]
-                avg_vol = hist['Avg_Vol_20'].iloc[-1]
-                high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (avg_vol * 1.5))
+                high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (hist['Avg_Vol_20'].iloc[-1] * 1.5))
                 
                 hist['ATR'] = calculate_atr(hist)
-                current_atr = hist['ATR'].iloc[-1]
-                auto_stop_price = avg_price - (3 * current_atr)
+                auto_stop_price = avg_price - (3 * hist['ATR'].iloc[-1])
                 auto_stop_pct = ((auto_stop_price - avg_price) / avg_price) * 100
                 
-                hist['Support_20'] = hist['Low'].rolling(window=20).min()
-                hist['Resistance_20'] = hist['High'].rolling(window=20).max()
-                current_support = hist['Support_20'].iloc[-1]
-                current_resistance = hist['Resistance_20'].iloc[-1]
+                # Pivot Points
+                pivot, s1, s2, s3, r1, r2, r3 = calculate_pivots(hist)
                 
                 change_pct = ((current_price - avg_price) / avg_price) * 100
                 affordable_shares = int(fresh_capital / current_price) if current_price > 0 else 0
@@ -95,47 +110,49 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 # --- DISPLAY LIVE STATS ---
                 st.subheader("📊 Live Technical Dashboard")
                 
+                # Row 1: Core
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
                 r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Buy")
-                r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Under 40 is Cheap" if current_rsi < 40 else "Over 70 is Expensive" if current_rsi > 70 else "Neutral")
-                r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
-                r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume")
+                r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Neutral" if 40 <= current_rsi <= 70 else "Oversold/Cheap" if current_rsi < 40 else "Overbought/Expensive")
+                r1_c3.metric("Short Term (5/20 SMA)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
+                r1_c4.metric("Long Term (50/200 EMA)", "Bull Market" if long_term_bullish else "Bear Market", delta_color="normal" if long_term_bullish else "inverse")
                 
-                r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
-                r2_c1.metric("50-Day EMA (Medium Trend)", f"₹{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
-                r2_c2.metric("200-Day EMA (Long Trend)", f"₹{current_ema_200:.2f}", "Bull Market" if current_price > current_ema_200 else "Bear Market")
-                r2_c3.metric("20-Day Support (Floor)", f"₹{current_support:.2f}")
-                r2_c4.metric("20-Day Resistance (Ceiling)", f"₹{current_resistance:.2f}")
+                # Row 2: Pivot Points (The Ladder)
+                st.write("**Today's Pivot Levels (Support & Resistance Ladder)**")
+                p_c1, p_c2, p_c3, p_c4, p_c5, p_c6, p_c7 = st.columns(7)
+                p_c1.metric("S3 (Crash Floor)", f"₹{s3:.0f}")
+                p_c2.metric("S2", f"₹{s2:.0f}")
+                p_c3.metric("S1 (Support)", f"₹{s1:.0f}")
+                p_c4.metric("PIVOT (Center)", f"₹{pivot:.0f}")
+                p_c5.metric("R1 (Resistance)", f"₹{r1:.0f}")
+                p_c6.metric("R2", f"₹{r2:.0f}")
+                p_c7.metric("R3 (Breakout)", f"₹{r3:.0f}")
                 st.divider()
 
                 # --- FRESH CAPITAL OPPORTUNITIES ---
-                st.subheader("💡 Fresh Capital Opportunities (Market-Anchored)")
-                st.write(f"*Deploying your ₹{fresh_capital} budget based on today's market structure.*")
+                st.subheader("💡 Fresh Capital Opportunities")
+                st.write(f"*Deploying your ₹{fresh_capital} budget using Pivot Points & Trend.*")
                 
-                distance_to_support = ((current_price - current_support) / current_support) * 100
-                distance_to_resistance = ((current_resistance - current_price) / current_price) * 100
-                
-                if current_price < current_ema_200:
+                if not long_term_bullish:
                     st.error("🛑 **AVOID FRESH ENTRIES.**")
-                    st.write("The stock is in a long-term bear market (Below 200-EMA). Keep your cash safe until the structural trend reverses.")
-                elif distance_to_support <= 2.0:
-                    if macd_bullish:
-                        st.success(f"🎯 **PRIME ENTRY ZONE: BUY {affordable_shares} SHARES.**")
-                        st.write(f"The stock is resting perfectly on its Support floor (₹{current_support:.2f}) and momentum is bullish. You can afford {affordable_shares} shares. High-probability entry.")
-                    else:
-                        st.warning("⚠️ **AT SUPPORT, BUT MOMENTUM IS WEAK.**")
-                        st.write(f"The stock is at Support (₹{current_support:.2f}), but MACD is bearish. Watch closely. If it bounces, buy {affordable_shares} shares. If it breaks below Support, wait.")
-                elif distance_to_resistance <= 2.0:
-                    st.warning("⚠️ **AVOID ENTRY (NEAR RESISTANCE).**")
-                    st.write(f"The stock is hitting its historical ceiling (₹{current_resistance:.2f}). It is likely to be rejected. Wait for a pullback to support before deploying cash.")
+                    st.write("The stock is in a macro bear market (Below 200-EMA). Keep your cash safe until the structural trend reverses.")
+                elif current_price < s1 and short_term_bullish and macd_bullish:
+                    st.success(f"🎯 **PRIME DIP BUY: {affordable_shares} SHARES.**")
+                    st.write(f"Price is down near S1/S2 support levels, but Short-Term momentum just flashed Bullish. This is a sniper entry opportunity.")
+                elif current_price > r1 and not short_term_bullish:
+                    st.warning("⚠️ **REJECTED AT RESISTANCE. DO NOT BUY.**")
+                    st.write("The stock is hitting the R1/R2 ceiling and losing short-term momentum. Wait for a pullback to the Pivot or S1.")
+                elif short_term_bullish:
+                    st.info(f"📈 **TRENDING UP: SAFE TO SCALp {affordable_shares} SHARES.**")
+                    st.write("The stock is between Pivot and R1 with strong momentum. It is safe to ride the wave upward.")
                 else:
-                    st.info("⏳ **NO MAN'S LAND. WAIT.**")
-                    st.write(f"The stock is floating between Support (₹{current_support:.2f}) and Resistance (₹{current_resistance:.2f}). No clear edge right now. Wait for it to drop closer to Support.")
+                    st.info("⏳ **WAITING FOR A SETUP.**")
+                    st.write("The stock is floating between levels with no clear short-term momentum. Keep your cash in the bank for now.")
                 
                 st.divider()
 
                 # --- ORIGINAL SECTION: RAMANI'S ACTION PLAN ---
-                st.subheader("⚖️ Ramani's Action Plan (Portfolio-Anchored)")
+                st.subheader("⚖️ Ramani's Action Plan")
                 st.write(f"*Managing your existing {quantity} shares based on your average buy price.*")
                 
                 if current_price <= auto_stop_price:
@@ -143,7 +160,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 elif change_pct <= -15:
                     if high_volume_dump:
                         st.error("🛑 **ACTION: DANGER - DO NOT BUY YET.**")
-                    elif current_price < current_ema_200 and current_rsi > 30:
+                    elif not long_term_bullish and current_rsi > 30:
                         st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**")
                     elif not macd_bullish and current_rsi > 40:
                         st.warning("⏸️ **ACTION: PAUSE BUY (NEGATIVE MOMENTUM).**")
@@ -152,14 +169,14 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                         qty_to_buy = max(1, int(quantity * share_pct))
                         st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.** (Ramani Dip Buy)")
                 elif change_pct >= 25:
-                    if current_rsi > 70 and current_price > (current_ema_50 * 1.15): 
+                    if current_rsi > 70 and current_price > (hist['EMA_50'].iloc[-1] * 1.15): 
                          share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
                          qty_to_sell = max(1, int(quantity * share_pct))
                          st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.** (Ramani Profit Taking)")
                     else:
                          st.info("💎 **ACTION: HOLD YOUR WINNER.**")
                 else:
-                    st.info("🧘 **ACTION: HOLD PATIENTLY.** (In the middle zone).")
+                    st.info("🧘 **ACTION: HOLD PATIENTLY.**")
                     
                 st.divider()
                 
@@ -192,4 +209,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.table(pd.DataFrame(target_data).sort_values(by="Trigger Level (%)", key=lambda col: col.str.replace('+','').str.replace('%','').astype(float)))
 
         except Exception as e:
-            st.error(f"An error occurred: {e}")
+            if "Too Many Requests" in str(e) or "Rate limited" in str(e):
+                st.error("⚠️ Yahoo Finance is rate-limiting. Please wait a few minutes.")
+            else:
+                st.error(f"An error occurred: {e}")
