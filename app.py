@@ -85,15 +85,20 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 short_term_bullish = hist['SMA_5'].iloc[-1] > hist['SMA_20'].iloc[-1]
                 
                 hist['EMA_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
+                current_ema_50 = hist['EMA_50'].iloc[-1]
+                
                 hist['EMA_200'] = hist['Close'].ewm(span=200, adjust=False).mean()
-                long_term_bullish = current_price > hist['EMA_200'].iloc[-1]
+                current_ema_200 = hist['EMA_200'].iloc[-1]
+                long_term_bullish = current_price > current_ema_200
                 
                 macd, macd_signal = calculate_macd(hist['Close'])
-                macd_bullish = macd.iloc[-1] > macd_signal.iloc[-1]
+                current_macd = macd.iloc[-1]
+                macd_bullish = current_macd > macd_signal.iloc[-1]
                 
                 hist['Avg_Vol_20'] = hist['Volume'].rolling(window=20).mean()
                 current_vol = hist['Volume'].iloc[-1]
-                high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (hist['Avg_Vol_20'].iloc[-1] * 1.5))
+                avg_vol = hist['Avg_Vol_20'].iloc[-1]
+                high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (avg_vol * 1.5))
                 
                 hist['ATR'] = calculate_atr(hist)
                 auto_stop_price = avg_price - (3 * hist['ATR'].iloc[-1])
@@ -111,14 +116,15 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
                 r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Buy")
                 r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Neutral" if 40 <= current_rsi <= 70 else "Oversold/Cheap" if current_rsi < 40 else "Overbought/Expensive")
-                r1_c3.metric("MACD Momentum", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
-                r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (hist['Avg_Vol_20'].iloc[-1] * 1.5) else "Normal Volume")
+                r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
+                r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume")
                 
                 # Row 2: Trend & Risk Metrics
-                r2_c1, r2_c2, r2_c3 = st.columns(3)
-                r2_c1.metric("Short Term (5/20 SMA)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
-                r2_c2.metric("Long Term (50/200 EMA)", "Bull Market" if long_term_bullish else "Bear Market", delta_color="normal" if long_term_bullish else "inverse")
-                r2_c3.metric("Auto Stop-Loss (3x ATR)", f"₹{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
+                r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
+                r2_c1.metric("50-Day EMA", f"₹{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
+                r2_c2.metric("200-Day EMA", f"₹{current_ema_200:.2f}", "Bull Market" if long_term_bullish else "Bear Market")
+                r2_c3.metric("Short Term (5/20)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
+                r2_c4.metric("Stop-Loss (3x ATR)", f"₹{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
                 
                 st.divider()
 
@@ -127,27 +133,27 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 
                 fig = go.Figure()
                 
-                # Draw the main line
+                # Draw the THICKER main line
                 fig.add_trace(go.Scatter(
                     x=[s3, r3], y=[0, 0], mode="lines",
-                    line=dict(color="gray", width=2), showlegend=False
+                    line=dict(color="gray", width=5), showlegend=False  # Thicker line here
                 ))
                 
-                # Plot the Pivot Points
+                # Plot the Pivot Points with larger dots
                 levels = [s3, s2, s1, pivot, r1, r2, r3]
                 labels = [f"S3<br>₹{s3:.0f}", f"S2<br>₹{s2:.0f}", f"S1<br>₹{s1:.0f}", f"PIVOT<br>₹{pivot:.0f}", f"R1<br>₹{r1:.0f}", f"R2<br>₹{r2:.0f}", f"R3<br>₹{r3:.0f}"]
                 colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] # Red to Green
                 
                 fig.add_trace(go.Scatter(
                     x=levels, y=[0]*7, mode="markers+text",
-                    marker=dict(color=colors, size=16),
+                    marker=dict(color=colors, size=20),  # Larger dots here
                     text=labels, textposition="top center", showlegend=False
                 ))
                 
-                # Plot Current Price
+                # Plot Current Price with a very prominent marker
                 fig.add_trace(go.Scatter(
                     x=[current_price], y=[0], mode="markers+text",
-                    marker=dict(color="#00BFFF", size=22, symbol="diamond", line=dict(color='white', width=2)),
+                    marker=dict(color="#00BFFF", size=24, symbol="diamond", line=dict(color='white', width=2)),
                     text=[f"CURRENT<br>₹{current_price:.2f}"], textposition="bottom center", showlegend=False
                 ))
                 
@@ -202,7 +208,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                         qty_to_buy = max(1, int(quantity * share_pct))
                         st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.** (Ramani Dip Buy)")
                 elif change_pct >= 25:
-                    if current_rsi > 70 and current_price > (hist['EMA_50'].iloc[-1] * 1.15): 
+                    if current_rsi > 70 and current_price > (current_ema_50 * 1.15): 
                          share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
                          qty_to_sell = max(1, int(quantity * share_pct))
                          st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.** (Ramani Profit Taking)")
