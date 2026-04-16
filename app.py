@@ -53,40 +53,45 @@ st.title("📈 The Ultimate Trading Assistant")
 st.write("Ramani's Core Engine | RSI + MACD + Volume + Pivot Structure")
 st.divider()
 
-# 2. Create the User Input Form (WITH THE NEW TOGGLE SWITCH)
-trade_mode = st.radio("🎯 Select Dashboard Mode:", ["Manage Existing Portfolio", "Scout New Trade"], horizontal=True)
+# 2. Create the User Input Form (WITH TOGGLE SWITCH)
+is_scout_mode = st.toggle("🚀 Enable 'Scout New Trade' Mode")
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    ticker_symbol = st.text_input("Ticker Symbol (Add .NS for India)", value="TATAPOWER.NS")
+    ticker_input = st.text_input("Ticker Symbol (e.g., TATAPOWER)", value="TATAPOWER")
 
 # Dynamic inputs based on the toggle switch
-if trade_mode == "Manage Existing Portfolio":
+if not is_scout_mode:
     with col2:
-        avg_price = st.number_input("Average Buy Price (₹/$)", value=384.75, step=1.0)
+        avg_price = st.number_input("Average Buy Price (₹)", value=384.75, step=1.0)
     with col3:
         quantity = st.number_input("Quantity Held", value=6, step=1)
-    fresh_capital = 0 # Not needed for this mode
+    fresh_capital = 0 
     trade_horizon = "N/A"
 else:
     with col2:
-        fresh_capital = st.number_input("Investment Budget (₹/$)", value=5000.0, step=500.0)
+        fresh_capital = st.number_input("Investment Budget (₹)", value=5000.0, step=500.0)
     with col3:
         trade_horizon = st.selectbox("Trade Horizon", ["Short-Term (Swing/Scalp)", "Long-Term (Growth)"])
-    avg_price = 0 # Not needed for this mode
+    avg_price = 0 
     quantity = 0
 
 st.write("<br>", unsafe_allow_html=True)
 
 # 3. The "Analyze" Button Logic
 if st.button("🔍 Analyze Live Market", type="primary"):
-    with st.spinner("Fetching live data..."):
+    with st.spinner("Fetching live data from National Stock Exchange..."):
         try:
-            hist = fetch_stock_data(ticker_symbol)
+            # Auto-format the ticker for the Indian Market
+            formatted_ticker = ticker_input.strip().upper()
+            if not formatted_ticker.endswith(".NS"):
+                formatted_ticker += ".NS"
+                
+            hist = fetch_stock_data(formatted_ticker)
             
             if len(hist) < 200:
-                st.error("❌ Not enough data found for this ticker.")
+                st.error(f"❌ Not enough data found for {formatted_ticker}. Check the spelling.")
             else:
                 current_price = hist['Close'].iloc[-1]
                 
@@ -116,8 +121,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 hist['ATR'] = calculate_atr(hist)
                 current_atr = hist['ATR'].iloc[-1]
                 
-                # Base price depends on mode
-                base_price = avg_price if trade_mode == "Manage Existing Portfolio" else current_price
+                base_price = avg_price if not is_scout_mode else current_price
                     
                 auto_stop_price = base_price - (3 * current_atr)
                 auto_stop_pct = ((auto_stop_price - base_price) / base_price) * 100
@@ -128,19 +132,19 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 affordable_shares = int(fresh_capital / current_price) if current_price > 0 else 0
                 
                 # --- DISPLAY LIVE STATS ---
-                st.subheader("📊 Live Technical Dashboard")
+                st.subheader(f"📊 Live Technical Dashboard: {formatted_ticker}")
                 
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
-                r1_c1.metric("Current Price", f"{current_price:.2f}", f"{change_pct:.2f}% from Base" if trade_mode == "Manage Existing Portfolio" else "Live")
+                r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Base" if not is_scout_mode else "Live")
                 r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Neutral" if 40 <= current_rsi <= 70 else "Oversold/Cheap" if current_rsi < 40 else "Overbought/Expensive")
                 r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
                 r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume")
                 
                 r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
-                r2_c1.metric("50-Day EMA", f"{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
-                r2_c2.metric("200-Day EMA", f"{current_ema_200:.2f}", "Bull Market" if long_term_bullish else "Bear Market")
+                r2_c1.metric("50-Day EMA", f"₹{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
+                r2_c2.metric("200-Day EMA", f"₹{current_ema_200:.2f}", "Bull Market" if long_term_bullish else "Bear Market")
                 r2_c3.metric("Short Term (5/20)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
-                r2_c4.metric("Stop-Loss (3x ATR)", f"{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
+                r2_c4.metric("Stop-Loss (3x ATR)", f"₹{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
                 
                 st.divider()
 
@@ -149,17 +153,16 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=[s3, r3], y=[0, 0], mode="lines", line=dict(color="gray", width=5), showlegend=False))
                 levels = [s3, s2, s1, pivot, r1, r2, r3]
-                labels = [f"S3<br>{s3:.0f}", f"S2<br>{s2:.0f}", f"S1<br>{s1:.0f}", f"PIVOT<br>{pivot:.0f}", f"R1<br>{r1:.0f}", f"R2<br>{r2:.0f}", f"R3<br>{r3:.0f}"]
+                labels = [f"S3<br>₹{s3:.0f}", f"S2<br>₹{s2:.0f}", f"S1<br>₹{s1:.0f}", f"PIVOT<br>₹{pivot:.0f}", f"R1<br>₹{r1:.0f}", f"R2<br>₹{r2:.0f}", f"R3<br>₹{r3:.0f}"]
                 colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] 
                 fig.add_trace(go.Scatter(x=levels, y=[0]*7, mode="markers+text", marker=dict(color=colors, size=20), text=labels, textposition="top center", showlegend=False))
-                fig.add_trace(go.Scatter(x=[current_price], y=[0], mode="markers+text", marker=dict(color="#00BFFF", size=24, symbol="diamond", line=dict(color='white', width=2)), text=[f"CURRENT<br>{current_price:.2f}"], textposition="bottom center", showlegend=False))
+                fig.add_trace(go.Scatter(x=[current_price], y=[0], mode="markers+text", marker=dict(color="#00BFFF", size=24, symbol="diamond", line=dict(color='white', width=2)), text=[f"CURRENT<br>₹{current_price:.2f}"], textposition="bottom center", showlegend=False))
                 fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[s3*0.95, r3*1.05]), yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 1]), height=200, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
                 st.plotly_chart(fig, use_container_width=True)
                 st.divider()
 
                 # --- CONDITIONAL DISPLAY ---
-                
-                if trade_mode == "Scout New Trade":
+                if is_scout_mode:
                     st.subheader("🚀 New Trade Blueprint")
                     st.write(f"*Evaluating this stock for a **{trade_horizon}** investment.*")
                     
@@ -178,18 +181,17 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                     
                     st.write("### 📋 Your Trade Execution Plan")
                     
-                    # Tailor targets based on Short vs Long term
                     if trade_horizon == "Short-Term (Swing/Scalp)":
                         target_price = r1
                         target_reason = "(R1 Resistance Level)"
                     else:
-                        target_price = current_price * 1.25 # Defaulting to Ramani's +25% rule for long term
+                        target_price = current_price * 1.25
                         target_reason = "(+25% Macro Target)"
 
                     plan_data = [
-                        {"Step": "1. Entry Strategy", "Details": f"Buy {affordable_shares} shares at/near {current_price:.2f}"},
-                        {"Step": "2. Hard Stop-Loss", "Details": f"Sell everything if price closes below {auto_stop_price:.2f} (ATR Floor)"},
-                        {"Step": f"3. Target Exit", "Details": f"Take profits near {target_price:.2f} {target_reason}"}
+                        {"Step": "1. Entry Strategy", "Details": f"Buy {affordable_shares} shares at/near ₹{current_price:.2f}"},
+                        {"Step": "2. Hard Stop-Loss", "Details": f"Sell everything if price closes below ₹{auto_stop_price:.2f} (ATR Floor)"},
+                        {"Step": f"3. Target Exit", "Details": f"Take profits near ₹{target_price:.2f} {target_reason}"}
                     ]
                     st.table(pd.DataFrame(plan_data))
                     
@@ -240,7 +242,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                             trade_qty = max(1, int(quantity * (r["share_pct"]/100)))
                             target_data.append({
                                 "Trigger Level (%)": f"{'+' if r['pct']>0 else ''}{r['pct']:.2f}%",
-                                "Target Price": f"{target_price:.2f}",
+                                "Target Price": f"₹{target_price:.2f}",
                                 "Action": r["action"],
                                 "Shares to Trade": f"{quantity} shares" if "STOP-LOSS" in r["action"] else f"{trade_qty} shares"
                             })
