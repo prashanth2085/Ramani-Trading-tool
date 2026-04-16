@@ -53,16 +53,33 @@ st.title("📈 The Ultimate Trading Assistant")
 st.write("Ramani's Core Engine | RSI + MACD + Volume + Pivot Structure")
 st.divider()
 
-# 2. Create the User Input Form (WITH TOGGLE SWITCH)
-is_scout_mode = st.toggle("🚀 Enable 'Scout New Trade' Mode")
+# 2. AESTHETIC MODE SELECTOR (Session State Toggle)
+if 'trade_mode' not in st.session_state:
+    st.session_state.trade_mode = "Manage Existing Portfolio"
 
+st.write("**🎯 Select Dashboard Mode:**")
+colA, colB = st.columns(2)
+
+with colA:
+    if st.button("💼 Manage Existing Portfolio", use_container_width=True, type="primary" if st.session_state.trade_mode == "Manage Existing Portfolio" else "secondary"):
+        st.session_state.trade_mode = "Manage Existing Portfolio"
+        st.rerun()
+        
+with colB:
+    if st.button("🚀 Scout New Trade", use_container_width=True, type="primary" if st.session_state.trade_mode == "Scout New Trade" else "secondary"):
+        st.session_state.trade_mode = "Scout New Trade"
+        st.rerun()
+
+st.write("<br>", unsafe_allow_html=True)
+
+# 3. Create the User Input Form
 col1, col2, col3 = st.columns(3)
 
 with col1:
     ticker_input = st.text_input("Ticker Symbol (e.g., TATAPOWER)", value="TATAPOWER")
 
-# Dynamic inputs based on the toggle switch
-if not is_scout_mode:
+# Dynamic inputs based on the beautiful toggle buttons
+if st.session_state.trade_mode == "Manage Existing Portfolio":
     with col2:
         avg_price = st.number_input("Average Buy Price (₹)", value=384.75, step=1.0)
     with col3:
@@ -79,11 +96,11 @@ else:
 
 st.write("<br>", unsafe_allow_html=True)
 
-# 3. The "Analyze" Button Logic
+# 4. The "Analyze" Button Logic
 if st.button("🔍 Analyze Live Market", type="primary"):
     with st.spinner("Fetching live data from National Stock Exchange..."):
         try:
-            # Auto-format the ticker for the Indian Market
+            # Auto-format the ticker for the Indian Market (adds .NS automatically)
             formatted_ticker = ticker_input.strip().upper()
             if not formatted_ticker.endswith(".NS"):
                 formatted_ticker += ".NS"
@@ -121,7 +138,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 hist['ATR'] = calculate_atr(hist)
                 current_atr = hist['ATR'].iloc[-1]
                 
-                base_price = avg_price if not is_scout_mode else current_price
+                base_price = avg_price if st.session_state.trade_mode == "Manage Existing Portfolio" else current_price
                     
                 auto_stop_price = base_price - (3 * current_atr)
                 auto_stop_pct = ((auto_stop_price - base_price) / base_price) * 100
@@ -135,7 +152,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.subheader(f"📊 Live Technical Dashboard: {formatted_ticker}")
                 
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
-                r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Base" if not is_scout_mode else "Live")
+                r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Base" if st.session_state.trade_mode == "Manage Existing Portfolio" else "Live")
                 r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Neutral" if 40 <= current_rsi <= 70 else "Oversold/Cheap" if current_rsi < 40 else "Overbought/Expensive")
                 r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
                 r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume")
@@ -162,7 +179,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.divider()
 
                 # --- CONDITIONAL DISPLAY ---
-                if is_scout_mode:
+                if st.session_state.trade_mode == "Scout New Trade":
                     st.subheader("🚀 New Trade Blueprint")
                     st.write(f"*Evaluating this stock for a **{trade_horizon}** investment.*")
                     
