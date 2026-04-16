@@ -28,7 +28,6 @@ def calculate_macd(prices, fast=12, slow=26, signal=9):
     macd_signal = macd.ewm(span=signal, adjust=False).mean()
     return macd, macd_signal
 
-# --- PIVOT POINT CALCULATOR ---
 def calculate_pivots(hist):
     prev_high = hist['High'].iloc[-2]
     prev_low = hist['Low'].iloc[-2]
@@ -41,10 +40,8 @@ def calculate_pivots(hist):
     s2 = pivot - (prev_high - prev_low)
     r3 = prev_high + 2 * (pivot - prev_low)
     s3 = prev_low - 2 * (prev_high - pivot)
-    
     return pivot, s1, s2, s3, r1, r2, r3
 
-# --- SMART DATA FETCHER ---
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_data(symbol):
     ticker = yf.Ticker(symbol)
@@ -54,21 +51,37 @@ def fetch_stock_data(symbol):
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
 st.write("Ramani's Core Engine | RSI + MACD + Volume + Pivot Structure")
+st.divider()
 
-# 2. Create the User Input Form
-col1, col2, col3, col4 = st.columns(4)
+# 2. Create the User Input Form (WITH THE NEW TOGGLE SWITCH)
+trade_mode = st.radio("🎯 Select Dashboard Mode:", ["Manage Existing Portfolio", "Scout New Trade"], horizontal=True)
+
+col1, col2, col3 = st.columns(3)
+
 with col1:
-    ticker_symbol = st.text_input("Ticker Symbol (Add .NS)", value="TATAPOWER.NS")
-with col2:
-    avg_price = st.number_input("Average Buy Price (₹)", value=384.75, step=1.0)
-with col3:
-    quantity = st.number_input("Quantity Held", value=6, step=1)
-with col4:
-    fresh_capital = st.number_input("Fresh Capital Available (₹)", value=10000, step=1000)
+    ticker_symbol = st.text_input("Ticker Symbol (Add .NS for India)", value="TATAPOWER.NS")
+
+# Dynamic inputs based on the toggle switch
+if trade_mode == "Manage Existing Portfolio":
+    with col2:
+        avg_price = st.number_input("Average Buy Price (₹/$)", value=384.75, step=1.0)
+    with col3:
+        quantity = st.number_input("Quantity Held", value=6, step=1)
+    fresh_capital = 0 # Not needed for this mode
+    trade_horizon = "N/A"
+else:
+    with col2:
+        fresh_capital = st.number_input("Investment Budget (₹/$)", value=5000.0, step=500.0)
+    with col3:
+        trade_horizon = st.selectbox("Trade Horizon", ["Short-Term (Swing/Scalp)", "Long-Term (Growth)"])
+    avg_price = 0 # Not needed for this mode
+    quantity = 0
+
+st.write("<br>", unsafe_allow_html=True)
 
 # 3. The "Analyze" Button Logic
 if st.button("🔍 Analyze Live Market", type="primary"):
-    with st.spinner("Fetching live data from National Stock Exchange..."):
+    with st.spinner("Fetching live data..."):
         try:
             hist = fetch_stock_data(ticker_symbol)
             
@@ -99,154 +112,140 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 hist['Avg_Vol_20'] = hist['Volume'].rolling(window=20).mean()
                 current_vol = hist['Volume'].iloc[-1]
                 avg_vol = hist['Avg_Vol_20'].iloc[-1]
-                high_volume_dump = (current_price < hist['Open'].iloc[-1]) and (current_vol > (avg_vol * 1.5))
                 
                 hist['ATR'] = calculate_atr(hist)
-                auto_stop_price = avg_price - (3 * hist['ATR'].iloc[-1])
-                auto_stop_pct = ((auto_stop_price - avg_price) / avg_price) * 100
+                current_atr = hist['ATR'].iloc[-1]
+                
+                # Base price depends on mode
+                base_price = avg_price if trade_mode == "Manage Existing Portfolio" else current_price
+                    
+                auto_stop_price = base_price - (3 * current_atr)
+                auto_stop_pct = ((auto_stop_price - base_price) / base_price) * 100
                 
                 pivot, s1, s2, s3, r1, r2, r3 = calculate_pivots(hist)
                 
-                change_pct = ((current_price - avg_price) / avg_price) * 100
+                change_pct = ((current_price - base_price) / base_price) * 100
                 affordable_shares = int(fresh_capital / current_price) if current_price > 0 else 0
                 
                 # --- DISPLAY LIVE STATS ---
                 st.subheader("📊 Live Technical Dashboard")
                 
-                # Row 1: Core Metrics
                 r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
-                r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Buy")
+                r1_c1.metric("Current Price", f"{current_price:.2f}", f"{change_pct:.2f}% from Base" if trade_mode == "Manage Existing Portfolio" else "Live")
                 r1_c2.metric("Current RSI", f"{current_rsi:.2f}", "Neutral" if 40 <= current_rsi <= 70 else "Oversold/Cheap" if current_rsi < 40 else "Overbought/Expensive")
                 r1_c3.metric("MACD Momentum", f"{current_macd:.2f}", "Bullish" if macd_bullish else "Bearish", delta_color="normal" if macd_bullish else "inverse")
                 r1_c4.metric("Market Volume", f"{current_vol / 1000000:.2f}M", "High Volatility" if current_vol > (avg_vol * 1.5) else "Normal Volume")
                 
-                # Row 2: Trend & Risk Metrics
                 r2_c1, r2_c2, r2_c3, r2_c4 = st.columns(4)
-                r2_c1.metric("50-Day EMA", f"₹{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
-                r2_c2.metric("200-Day EMA", f"₹{current_ema_200:.2f}", "Bull Market" if long_term_bullish else "Bear Market")
+                r2_c1.metric("50-Day EMA", f"{current_ema_50:.2f}", "Above EMA" if current_price > current_ema_50 else "Below EMA")
+                r2_c2.metric("200-Day EMA", f"{current_ema_200:.2f}", "Bull Market" if long_term_bullish else "Bear Market")
                 r2_c3.metric("Short Term (5/20)", "Bullish Cross" if short_term_bullish else "Bearish Cross", delta_color="normal" if short_term_bullish else "inverse")
-                r2_c4.metric("Stop-Loss (3x ATR)", f"₹{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
+                r2_c4.metric("Stop-Loss (3x ATR)", f"{auto_stop_price:.2f}", f"Trigger at {auto_stop_pct:.2f}%", delta_color="inverse")
                 
                 st.divider()
 
                 # --- VISUAL PIVOT LADDER (PLOTLY) ---
                 st.write("**📍 Today's Pivot Levels (Support & Resistance Ladder)**")
-                
                 fig = go.Figure()
-                
-                # Draw the THICKER main line
-                fig.add_trace(go.Scatter(
-                    x=[s3, r3], y=[0, 0], mode="lines",
-                    line=dict(color="gray", width=5), showlegend=False
-                ))
-                
-                # Plot the Pivot Points with larger dots
+                fig.add_trace(go.Scatter(x=[s3, r3], y=[0, 0], mode="lines", line=dict(color="gray", width=5), showlegend=False))
                 levels = [s3, s2, s1, pivot, r1, r2, r3]
-                labels = [f"S3<br>₹{s3:.0f}", f"S2<br>₹{s2:.0f}", f"S1<br>₹{s1:.0f}", f"PIVOT<br>₹{pivot:.0f}", f"R1<br>₹{r1:.0f}", f"R2<br>₹{r2:.0f}", f"R3<br>₹{r3:.0f}"]
+                labels = [f"S3<br>{s3:.0f}", f"S2<br>{s2:.0f}", f"S1<br>{s1:.0f}", f"PIVOT<br>{pivot:.0f}", f"R1<br>{r1:.0f}", f"R2<br>{r2:.0f}", f"R3<br>{r3:.0f}"]
                 colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] 
-                
-                fig.add_trace(go.Scatter(
-                    x=levels, y=[0]*7, mode="markers+text",
-                    marker=dict(color=colors, size=20),
-                    text=labels, textposition="top center", showlegend=False
-                ))
-                
-                # Plot Current Price with a very prominent marker
-                fig.add_trace(go.Scatter(
-                    x=[current_price], y=[0], mode="markers+text",
-                    marker=dict(color="#00BFFF", size=24, symbol="diamond", line=dict(color='white', width=2)),
-                    text=[f"CURRENT<br>₹{current_price:.2f}"], textposition="bottom center", showlegend=False
-                ))
-                
-                # Layout formatting
-                fig.update_layout(
-                    xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[s3*0.95, r3*1.05]),
-                    yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 1]),
-                    height=200, margin=dict(l=20, r=20, t=40, b=40),
-                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
-                )
-                
+                fig.add_trace(go.Scatter(x=levels, y=[0]*7, mode="markers+text", marker=dict(color=colors, size=20), text=labels, textposition="top center", showlegend=False))
+                fig.add_trace(go.Scatter(x=[current_price], y=[0], mode="markers+text", marker=dict(color="#00BFFF", size=24, symbol="diamond", line=dict(color='white', width=2)), text=[f"CURRENT<br>{current_price:.2f}"], textposition="bottom center", showlegend=False))
+                fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[s3*0.95, r3*1.05]), yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 1]), height=200, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
                 st.plotly_chart(fig, use_container_width=True)
                 st.divider()
 
-                # --- FRESH CAPITAL OPPORTUNITIES ---
-                st.subheader("💡 Fresh Capital Opportunities")
-                st.write(f"*Deploying your ₹{fresh_capital} budget using Pivot Points & Trend.*")
+                # --- CONDITIONAL DISPLAY ---
                 
-                if not long_term_bullish:
-                    st.error("🛑 **AVOID FRESH ENTRIES.**")
-                    st.write("The stock is in a macro bear market (Below 200-EMA). Keep your cash safe until the structural trend reverses.")
-                elif current_price < s1 and short_term_bullish and macd_bullish:
-                    st.success(f"🎯 **PRIME DIP BUY: {affordable_shares} SHARES.**")
-                    st.write(f"Price is down near S1/S2 support levels, but Short-Term momentum just flashed Bullish. This is a sniper entry opportunity.")
-                elif current_price > r1 and not short_term_bullish:
-                    st.warning("⚠️ **REJECTED AT RESISTANCE. DO NOT BUY.**")
-                    st.write("The stock is hitting the R1/R2 ceiling and losing short-term momentum. Wait for a pullback to the Pivot or S1.")
-                elif short_term_bullish:
-                    st.info(f"📈 **TRENDING UP: SAFE TO SCALP {affordable_shares} SHARES.**")
-                    st.write("The stock is between Pivot and R1 with strong momentum. It is safe to ride the wave upward.")
-                else:
-                    st.info("⏳ **WAITING FOR A SETUP.**")
-                    st.write("The stock is floating between levels with no clear short-term momentum. Keep your cash in the bank for now.")
-                
-                st.divider()
-
-                # --- ORIGINAL SECTION: RAMANI'S ACTION PLAN ---
-                st.subheader("⚖️ Ramani's Action Plan")
-                st.write(f"*Managing your existing {quantity} shares based on your average buy price.*")
-                
-                if current_price <= auto_stop_price:
-                    st.error(f"🚨 **EMERGENCY ACTION: STOP-LOSS TRIGGERED. SELL ALL {quantity} SHARES.**")
-                elif change_pct <= -15:
-                    if high_volume_dump:
-                        st.error("🛑 **ACTION: DANGER - DO NOT BUY YET.**")
-                    elif not long_term_bullish and current_rsi > 30:
-                        st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**")
-                    elif not macd_bullish and current_rsi > 40:
-                        st.warning("⏸️ **ACTION: PAUSE BUY (NEGATIVE MOMENTUM).**")
-                    else:
-                        share_pct = 0.30 if change_pct <= -35 else 0.25 if change_pct <= -25 else 0.10
-                        qty_to_buy = max(1, int(quantity * share_pct))
-                        st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.** (Ramani Dip Buy)")
-                elif change_pct >= 25:
-                    if current_rsi > 70 and current_price > (current_ema_50 * 1.15): 
-                         share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
-                         qty_to_sell = max(1, int(quantity * share_pct))
-                         st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.** (Ramani Profit Taking)")
-                    else:
-                         st.info("💎 **ACTION: HOLD YOUR WINNER.**")
-                else:
-                    st.info("🧘 **ACTION: HOLD PATIENTLY.**")
+                if trade_mode == "Scout New Trade":
+                    st.subheader("🚀 New Trade Blueprint")
+                    st.write(f"*Evaluating this stock for a **{trade_horizon}** investment.*")
                     
-                st.divider()
-                
-                # --- FUTURE TARGETS (CHEAT SHEET) ---
-                st.subheader("🎯 Future Price Targets & Trades")
-                rules = [
-                    {"pct": auto_stop_pct, "action": "🚨 AUTO STOP-LOSS", "share_pct": 100},
-                    {"pct": -35, "action": "Buy", "share_pct": 30},
-                    {"pct": -25, "action": "Buy", "share_pct": 25},
-                    {"pct": -15, "action": "Buy", "share_pct": 10},
-                    {"pct": 25, "action": "Sell", "share_pct": 10},
-                    {"pct": 35, "action": "Sell", "share_pct": 20},
-                    {"pct": 45, "action": "Sell", "share_pct": 30},
-                    {"pct": 60, "action": "Sell", "share_pct": 40},
-                    {"pct": 100, "action": "Sell", "share_pct": 100}
-                ]
-                
-                target_data = []
-                for r in rules:
-                    if r["pct"] > auto_stop_pct or "STOP-LOSS" in r["action"]:
-                        target_price = avg_price * (1 + (r["pct"]/100))
-                        trade_qty = max(1, int(quantity * (r["share_pct"]/100)))
-                        target_data.append({
-                            "Trigger Level (%)": f"{'+' if r['pct']>0 else ''}{r['pct']:.2f}%",
-                            "Target Price (₹)": f"₹{target_price:.2f}",
-                            "Action": r["action"],
-                            "Shares to Trade": f"{quantity} shares" if "STOP-LOSS" in r["action"] else f"{trade_qty} shares"
-                        })
-                
-                st.table(pd.DataFrame(target_data).sort_values(by="Trigger Level (%)", key=lambda col: col.str.replace('+','').str.replace('%','').astype(float)))
+                    if not long_term_bullish and trade_horizon == "Long-Term (Growth)":
+                        st.error("🛑 **VERDICT: AVOID FOR LONG-TERM.**")
+                        st.write("This stock is in a macro bear market (Below 200-EMA). Do not invest long-term capital here until the structural trend reverses.")
+                    elif current_rsi > 70:
+                        st.warning("⚠️ **VERDICT: WAIT FOR PULLBACK.**")
+                        st.write("The stock is currently overbought. Wait for the price to cool down towards the Pivot or S1 Support before entering.")
+                    elif current_price <= pivot and short_term_bullish:
+                        st.success(f"🎯 **VERDICT: PRIME ENTRY. BUY {affordable_shares} SHARES.**")
+                        st.write("Price is near Support with Bullish momentum. Excellent risk-to-reward ratio.")
+                    else:
+                        st.info(f"📈 **VERDICT: ACCEPTABLE ENTRY.**")
+                        st.write("The trend is up, but you are buying midway between Support and Resistance. Proceed with standard caution.")
+                    
+                    st.write("### 📋 Your Trade Execution Plan")
+                    
+                    # Tailor targets based on Short vs Long term
+                    if trade_horizon == "Short-Term (Swing/Scalp)":
+                        target_price = r1
+                        target_reason = "(R1 Resistance Level)"
+                    else:
+                        target_price = current_price * 1.25 # Defaulting to Ramani's +25% rule for long term
+                        target_reason = "(+25% Macro Target)"
+
+                    plan_data = [
+                        {"Step": "1. Entry Strategy", "Details": f"Buy {affordable_shares} shares at/near {current_price:.2f}"},
+                        {"Step": "2. Hard Stop-Loss", "Details": f"Sell everything if price closes below {auto_stop_price:.2f} (ATR Floor)"},
+                        {"Step": f"3. Target Exit", "Details": f"Take profits near {target_price:.2f} {target_reason}"}
+                    ]
+                    st.table(pd.DataFrame(plan_data))
+                    
+                else:
+                    st.subheader("⚖️ Ramani's Action Plan")
+                    st.write(f"*Managing your existing {quantity} shares based on your average buy price.*")
+                    
+                    if current_price <= auto_stop_price:
+                        st.error(f"🚨 **EMERGENCY ACTION: STOP-LOSS TRIGGERED. SELL ALL {quantity} SHARES.**")
+                    elif change_pct <= -15:
+                        if not long_term_bullish and current_rsi > 30:
+                            st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**")
+                        elif not macd_bullish and current_rsi > 40:
+                            st.warning("⏸️ **ACTION: PAUSE BUY (NEGATIVE MOMENTUM).**")
+                        else:
+                            share_pct = 0.30 if change_pct <= -35 else 0.25 if change_pct <= -25 else 0.10
+                            qty_to_buy = max(1, int(quantity * share_pct))
+                            st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.** (Ramani Dip Buy)")
+                    elif change_pct >= 25:
+                        if current_rsi > 70 and current_price > (hist['EMA_50'].iloc[-1] * 1.15): 
+                             share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
+                             qty_to_sell = max(1, int(quantity * share_pct))
+                             st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.** (Ramani Profit Taking)")
+                        else:
+                             st.info("💎 **ACTION: HOLD YOUR WINNER.**")
+                    else:
+                        st.info("🧘 **ACTION: HOLD PATIENTLY.**")
+                        
+                    st.divider()
+                    
+                    st.subheader("🎯 Future Price Targets & Trades")
+                    rules = [
+                        {"pct": auto_stop_pct, "action": "🚨 AUTO STOP-LOSS", "share_pct": 100},
+                        {"pct": -35, "action": "Buy", "share_pct": 30},
+                        {"pct": -25, "action": "Buy", "share_pct": 25},
+                        {"pct": -15, "action": "Buy", "share_pct": 10},
+                        {"pct": 25, "action": "Sell", "share_pct": 10},
+                        {"pct": 35, "action": "Sell", "share_pct": 20},
+                        {"pct": 45, "action": "Sell", "share_pct": 30},
+                        {"pct": 60, "action": "Sell", "share_pct": 40},
+                        {"pct": 100, "action": "Sell", "share_pct": 100}
+                    ]
+                    
+                    target_data = []
+                    for r in rules:
+                        if r["pct"] > auto_stop_pct or "STOP-LOSS" in r["action"]:
+                            target_price = avg_price * (1 + (r["pct"]/100))
+                            trade_qty = max(1, int(quantity * (r["share_pct"]/100)))
+                            target_data.append({
+                                "Trigger Level (%)": f"{'+' if r['pct']>0 else ''}{r['pct']:.2f}%",
+                                "Target Price": f"{target_price:.2f}",
+                                "Action": r["action"],
+                                "Shares to Trade": f"{quantity} shares" if "STOP-LOSS" in r["action"] else f"{trade_qty} shares"
+                            })
+                    
+                    st.table(pd.DataFrame(target_data).sort_values(by="Trigger Level (%)", key=lambda col: col.str.replace('+','').str.replace('%','').astype(float)))
 
         except Exception as e:
             if "Too Many Requests" in str(e) or "Rate limited" in str(e):
@@ -255,7 +254,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.error(f"An error occurred: {e}")
 
 # --- MOTIVATIONAL FOOTER ---
-st.write("<br><br>", unsafe_allow_html=True) # Adds some breathing room at the bottom
+st.write("<br><br>", unsafe_allow_html=True)
 quotes = [
     "\"The elements of good trading are (1) cutting losses, (2) cutting losses, and (3) cutting losses.\" – Ed Seykota",
     "\"If you cannot control your emotions, you cannot control your money.\" – Warren Buffett",
@@ -266,6 +265,4 @@ quotes = [
     "\"The goal of a successful trader is to make the best trades. Money is secondary.\" – Alexander Elder",
     "\"Amateurs want to be right. Professionals want to make money.\""
 ]
-
-# Display a random quote every time the app runs or is interacted with
 st.markdown(f"> *{random.choice(quotes)}*")
