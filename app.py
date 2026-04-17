@@ -54,7 +54,7 @@ def fetch_fundamentals(symbol):
         ticker = yf.Ticker(symbol)
         info = ticker.info
         
-        # Safely pull data, defaulting to safe numbers if missing
+        # Safely pull data, defaulting to safe/identifiable "missing" numbers
         def safe_get(key, default=0):
             val = info.get(key)
             return val if val is not None else default
@@ -220,21 +220,44 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.plotly_chart(fig, use_container_width=True)
                 st.divider()
 
-                # --- FUNDAMENTAL DASHBOARD ---
+                # --- FUNDAMENTAL DASHBOARD WITH DISCLAIMER ---
                 st.subheader("🏢 Fundamental Quality Filter")
+                st.info("⚠️ **Disclaimer:** Yahoo Finance frequently blocks or omits balance sheet data for Indian stocks. If you see 'N/A' below, let this app drive your technical entries, but manually verify the company's fundamentals on **Screener.in** before making long-term core investments.")
+                
                 if funds:
                     if is_core:
-                        st.success(f"**Passed!** This is a **{grade}** stock. It is fundamentally strong and approved for accumulation.")
+                        st.success(f"**Passed!** Based on available data, this is a **{grade}** stock. It shows fundamental strength.")
                     else:
-                        st.warning(f"**Warning!** This is a **{grade}** stock. It has weak fundamentals. Trade strictly with a stop-loss.")
+                        st.warning(f"**Warning!** Based on available data, this is a **{grade}** stock. Trade strictly with a stop-loss.")
                         
                     fund_col1, fund_col2, fund_col3, fund_col4 = st.columns(4)
-                    fund_col1.metric("Return on Equity", f"{funds['roe']*100:.1f}%", "Pass (>15%)" if funds['roe'] > 0.15 else "Fail", delta_color="normal" if funds['roe'] > 0.15 else "inverse")
-                    fund_col2.metric("Debt-to-Equity", f"{funds['debt_equity']:.1f}%", "Pass (<100%)" if funds['debt_equity'] < 100 else "Fail", delta_color="normal" if funds['debt_equity'] < 100 else "inverse")
-                    fund_col3.metric("Free Cash Flow", "Positive" if funds['fcf'] > 0 else "Negative", "Pass" if funds['fcf'] > 0 else "Fail", delta_color="normal" if funds['fcf'] > 0 else "inverse")
-                    fund_col4.metric("Revenue Growth", f"{funds['growth']*100:.1f}%", "Pass" if funds['growth'] > 0 else "Fail", delta_color="normal" if funds['growth'] > 0 else "inverse")
+                    
+                    # ROE Metric
+                    if funds['roe'] == 0:
+                        fund_col1.metric("Return on Equity", "N/A", "Yahoo Data Missing", delta_color="off")
+                    else:
+                        fund_col1.metric("Return on Equity", f"{funds['roe']*100:.1f}%", "Pass (>15%)" if funds['roe'] > 0.15 else "Fail (<15%)", delta_color="normal" if funds['roe'] > 0.15 else "inverse")
+                    
+                    # Debt to Equity Metric
+                    if funds['debt_equity'] == 999:
+                        fund_col2.metric("Debt-to-Equity", "N/A", "Yahoo Data Missing", delta_color="off")
+                    else:
+                        fund_col2.metric("Debt-to-Equity", f"{funds['debt_equity']:.1f}%", "Pass (<100%)" if funds['debt_equity'] < 100 else "Fail (High Debt)", delta_color="normal" if funds['debt_equity'] < 100 else "inverse")
+                    
+                    # Free Cash Flow Metric
+                    if funds['fcf'] == 0:
+                        fund_col3.metric("Free Cash Flow", "N/A", "Yahoo Data Missing", delta_color="off")
+                    else:
+                        fund_col3.metric("Free Cash Flow", "Positive" if funds['fcf'] > 0 else "Negative", "Pass" if funds['fcf'] > 0 else "Fail", delta_color="normal" if funds['fcf'] > 0 else "inverse")
+                    
+                    # Revenue Growth Metric
+                    if funds['growth'] == 0:
+                        fund_col4.metric("Revenue Growth", "N/A", "Yahoo Data Missing", delta_color="off")
+                    else:
+                        fund_col4.metric("Revenue Growth", f"{funds['growth']*100:.1f}%", "Pass" if funds['growth'] > 0 else "Fail", delta_color="normal" if funds['growth'] > 0 else "inverse")
+                        
                 else:
-                    st.info("Fundamental data unavailable for this ticker.")
+                    st.warning("Fundamental data could not be retrieved from the exchange for this ticker.")
                 st.divider()
 
                 # --- CONDITIONAL DISPLAY: ACTION PLANS ---
@@ -243,7 +266,7 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                     
                     # Prevent buying bad stocks for the long term
                     if not is_core and trade_horizon == "Long-Term (Growth)":
-                        st.error(f"🛑 **VERDICT: REJECTED FOR LONG-TERM.**\nYou selected Long-Term, but this is a **{grade}** stock with weak fundamentals. Do not lock fresh capital into this for the long haul.")
+                        st.error(f"🛑 **VERDICT: REJECTED FOR LONG-TERM.**\nYou selected Long-Term, but this is graded as **{grade}**. Do not lock fresh capital into this for the long haul unless you verify fundamentals independently.")
                     elif current_rsi > 70:
                         st.warning("⚠️ **VERDICT: WAIT FOR PULLBACK.**\nThe stock is currently overbought. Wait for it to cool down.")
                     elif current_price <= pivot and short_term_bullish:
@@ -266,9 +289,8 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                     if current_price <= auto_stop_price:
                         st.error(f"🚨 **EMERGENCY ACTION: STOP-LOSS TRIGGERED. SELL ALL {quantity} SHARES.**")
                     elif change_pct <= -15:
-                        # NEW: Stop the user from averaging down on bad stocks
                         if not is_core:
-                            st.warning(f"🛑 **ACTION: DO NOT AVERAGE DOWN.**\n\nPrice dropped, but this is a **{grade}** stock. Averaging down on low-quality companies is a 'value trap'. Hold your current position and rely strictly on your Stop-Loss.")
+                            st.warning(f"🛑 **ACTION: BE CAREFUL AVERAGING DOWN.**\n\nPrice dropped, but this is graded **{grade}**. Averaging down on low-quality companies is a 'value trap'. Verify fundamentals on Screener.in before accumulating more.")
                         elif not long_term_bullish and current_rsi > 30:
                             st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**\n\nThe stock is in a macro downtrend. Wait for extreme oversold conditions (RSI < 30).")
                         else:
@@ -276,9 +298,8 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                             qty_to_buy = max(1, int(quantity * share_pct))
                             st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.**\n\nPrice dropped to a buy tier, and this is a **{grade}** company. It is safe to average down and accumulate.")
                     elif change_pct >= 25:
-                        # NEW: Encourage taking profits faster on bad stocks
                         if not is_core:
-                             st.error(f"💰 **ACTION: SELL {quantity} SHARES (TAKE PROFITS!).**\n\nHit target on a **{grade}** stock. Do not hold low-quality stocks forever. Lock in the cash now.")
+                             st.error(f"💰 **ACTION: SELL {quantity} SHARES (TAKE PROFITS!).**\n\nHit target on a **{grade}** stock. Do not hold purely technical plays forever. Lock in the cash now.")
                         elif current_rsi > 70 and current_price > (hist['EMA_50'].iloc[-1] * 1.15): 
                              share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
                              qty_to_sell = max(1, int(quantity * share_pct))
