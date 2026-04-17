@@ -326,7 +326,8 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                     
                     target_data = []
                     for r in rules:
-                        if r["pct"] > auto_stop_pct or "STOP-LOSS" in r["action"]:
+                        # NEW FIX: CORE stocks bypass the Stop-Loss filter so you can always see your Buy zones
+                        if is_core or (r["pct"] > auto_stop_pct) or ("STOP-LOSS" in r["action"]):
                             target_price = avg_price * (1 + (r["pct"]/100))
                             trade_qty = max(1, int(quantity * (r["share_pct"]/100)))
                             target_data.append({
