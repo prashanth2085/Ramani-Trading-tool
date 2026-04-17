@@ -210,13 +210,22 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 # --- VISUAL PIVOT LADDER (PLOTLY) ---
                 st.write("**📍 Today's Pivot Levels (Support & Resistance Ladder)**")
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=[s3, r3], y=[0, 0], mode="lines", line=dict(color="gray", width=5), showlegend=False))
+                
+                # NEW FIX: Dynamically stretch the gray line to catch extreme breakouts
+                min_x = min(s3, current_price)
+                max_x = max(r3, current_price)
+                
+                fig.add_trace(go.Scatter(x=[min_x, max_x], y=[0, 0], mode="lines", line=dict(color="gray", width=5), showlegend=False))
+                
                 levels = [s3, s2, s1, pivot, r1, r2, r3]
                 labels = [f"S3<br>₹{s3:.0f}", f"S2<br>₹{s2:.0f}", f"S1<br>₹{s1:.0f}", f"PIVOT<br>₹{pivot:.0f}", f"R1<br>₹{r1:.0f}", f"R2<br>₹{r2:.0f}", f"R3<br>₹{r3:.0f}"]
                 colors = ["#8B0000", "#FF4500", "#FFA07A", "gray", "#90EE90", "#32CD32", "#006400"] 
+                
                 fig.add_trace(go.Scatter(x=levels, y=[0]*7, mode="markers+text", marker=dict(color=colors, size=20), text=labels, textposition="top center", showlegend=False))
                 fig.add_trace(go.Scatter(x=[current_price], y=[0], mode="markers+text", marker=dict(color="#00BFFF", size=24, symbol="diamond", line=dict(color='white', width=2)), text=[f"CURRENT<br>₹{current_price:.2f}"], textposition="bottom center", showlegend=False))
-                fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[s3*0.95, r3*1.05]), yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 1]), height=200, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+                
+                # NEW FIX: Auto-adjust the camera zoom so nothing gets cut off
+                fig.update_layout(xaxis=dict(showgrid=False, zeroline=False, visible=False, range=[min_x*0.95, max_x*1.05]), yaxis=dict(showgrid=False, zeroline=False, visible=False, range=[-1, 1]), height=200, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
                 st.plotly_chart(fig, use_container_width=True)
                 st.divider()
 
