@@ -42,18 +42,40 @@ def calculate_pivots(hist):
     s3 = prev_low - 2 * (prev_high - pivot)
     return pivot, s1, s2, s3, r1, r2, r3
 
+# --- SMART DATA FETCHERS ---
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_stock_data(symbol):
     ticker = yf.Ticker(symbol)
     return ticker.history(period="2y")
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_fundamentals(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        
+        # Safely pull data, defaulting to safe numbers if missing
+        def safe_get(key, default=0):
+            val = info.get(key)
+            return val if val is not None else default
+            
+        return {
+            "roe": safe_get("returnOnEquity", 0),
+            "debt_equity": safe_get("debtToEquity", 999), 
+            "fcf": safe_get("freeCashflow", 0),
+            "margin": safe_get("profitMargins", 0),
+            "growth": safe_get("revenueGrowth", 0)
+        }
+    except:
+        return None
+
 # 1. Setup the Webpage
 st.set_page_config(page_title="Ramani's Trading App", page_icon="📈", layout="wide")
 st.title("📈 The Ultimate Trading Assistant")
-st.write("Ramani's Core Engine | RSI + MACD + Volume + Pivot Structure")
+st.write("Ramani's Core Engine | Technicals + Pivot Structure + Fundamental Grader")
 st.divider()
 
-# 2. AESTHETIC MODE SELECTOR (Session State Toggle)
+# 2. AESTHETIC MODE SELECTOR 
 if 'trade_mode' not in st.session_state:
     st.session_state.trade_mode = "Manage Existing Portfolio"
 
@@ -78,7 +100,6 @@ col1, col2, col3 = st.columns(3)
 with col1:
     ticker_input = st.text_input("Ticker Symbol (e.g., TATAPOWER)", value="TATAPOWER")
 
-# Dynamic inputs based on the beautiful toggle buttons
 if st.session_state.trade_mode == "Manage Existing Portfolio":
     with col2:
         avg_price = st.number_input("Average Buy Price (₹)", value=384.75, step=1.0)
@@ -98,14 +119,14 @@ st.write("<br>", unsafe_allow_html=True)
 
 # 4. The "Analyze" Button Logic
 if st.button("🔍 Analyze Live Market", type="primary"):
-    with st.spinner("Fetching live data from National Stock Exchange..."):
+    with st.spinner("Analyzing Technicals and Fundamentals..."):
         try:
-            # Auto-format the ticker for the Indian Market (adds .NS automatically)
             formatted_ticker = ticker_input.strip().upper()
             if not formatted_ticker.endswith(".NS"):
                 formatted_ticker += ".NS"
                 
             hist = fetch_stock_data(formatted_ticker)
+            funds = fetch_fundamentals(formatted_ticker)
             
             if len(hist) < 200:
                 st.error(f"❌ Not enough data found for {formatted_ticker}. Check the spelling.")
@@ -148,6 +169,27 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 change_pct = ((current_price - base_price) / base_price) * 100
                 affordable_shares = int(fresh_capital / current_price) if current_price > 0 else 0
                 
+                # --- FUNDAMENTAL EVALUATION ---
+                score = 0
+                grade = "UNKNOWN"
+                is_core = False
+                
+                if funds:
+                    if funds['roe'] > 0.15: score += 1
+                    if funds['debt_equity'] < 100: score += 1
+                    if funds['fcf'] > 0: score += 1
+                    if funds['margin'] > 0: score += 1
+                    if funds['growth'] > 0: score += 1
+                    
+                    if score >= 4:
+                        grade, is_core = "👑 CORE 15/10", True
+                    elif score == 3:
+                        grade, is_core = "⚖️ CORE 5", True
+                    elif score == 2:
+                        grade, is_core = "⏱️ SHORT TERM ONLY", False
+                    else:
+                        grade, is_core = "⚠️ TRADING ONLY", False
+                
                 # --- DISPLAY LIVE STATS ---
                 st.subheader(f"📊 Live Technical Dashboard: {formatted_ticker}")
                 
@@ -178,64 +220,73 @@ if st.button("🔍 Analyze Live Market", type="primary"):
                 st.plotly_chart(fig, use_container_width=True)
                 st.divider()
 
-                # --- CONDITIONAL DISPLAY ---
+                # --- FUNDAMENTAL DASHBOARD ---
+                st.subheader("🏢 Fundamental Quality Filter")
+                if funds:
+                    if is_core:
+                        st.success(f"**Passed!** This is a **{grade}** stock. It is fundamentally strong and approved for accumulation.")
+                    else:
+                        st.warning(f"**Warning!** This is a **{grade}** stock. It has weak fundamentals. Trade strictly with a stop-loss.")
+                        
+                    fund_col1, fund_col2, fund_col3, fund_col4 = st.columns(4)
+                    fund_col1.metric("Return on Equity", f"{funds['roe']*100:.1f}%", "Pass (>15%)" if funds['roe'] > 0.15 else "Fail", delta_color="normal" if funds['roe'] > 0.15 else "inverse")
+                    fund_col2.metric("Debt-to-Equity", f"{funds['debt_equity']:.1f}%", "Pass (<100%)" if funds['debt_equity'] < 100 else "Fail", delta_color="normal" if funds['debt_equity'] < 100 else "inverse")
+                    fund_col3.metric("Free Cash Flow", "Positive" if funds['fcf'] > 0 else "Negative", "Pass" if funds['fcf'] > 0 else "Fail", delta_color="normal" if funds['fcf'] > 0 else "inverse")
+                    fund_col4.metric("Revenue Growth", f"{funds['growth']*100:.1f}%", "Pass" if funds['growth'] > 0 else "Fail", delta_color="normal" if funds['growth'] > 0 else "inverse")
+                else:
+                    st.info("Fundamental data unavailable for this ticker.")
+                st.divider()
+
+                # --- CONDITIONAL DISPLAY: ACTION PLANS ---
                 if st.session_state.trade_mode == "Scout New Trade":
                     st.subheader("🚀 New Trade Blueprint")
-                    st.write(f"*Evaluating this stock for a **{trade_horizon}** investment.*")
                     
-                    if not long_term_bullish and trade_horizon == "Long-Term (Growth)":
-                        st.error("🛑 **VERDICT: AVOID FOR LONG-TERM.**")
-                        st.write("This stock is in a macro bear market (Below 200-EMA). Do not invest long-term capital here until the structural trend reverses.")
+                    # Prevent buying bad stocks for the long term
+                    if not is_core and trade_horizon == "Long-Term (Growth)":
+                        st.error(f"🛑 **VERDICT: REJECTED FOR LONG-TERM.**\nYou selected Long-Term, but this is a **{grade}** stock with weak fundamentals. Do not lock fresh capital into this for the long haul.")
                     elif current_rsi > 70:
-                        st.warning("⚠️ **VERDICT: WAIT FOR PULLBACK.**")
-                        st.write("The stock is currently overbought. Wait for the price to cool down towards the Pivot or S1 Support before entering.")
+                        st.warning("⚠️ **VERDICT: WAIT FOR PULLBACK.**\nThe stock is currently overbought. Wait for it to cool down.")
                     elif current_price <= pivot and short_term_bullish:
-                        st.success(f"🎯 **VERDICT: PRIME ENTRY. BUY {affordable_shares} SHARES.**")
-                        st.write("Price is near Support with Bullish momentum. Excellent risk-to-reward ratio.")
+                        st.success(f"🎯 **VERDICT: PRIME ENTRY. BUY {affordable_shares} SHARES.**\nPrice is near Support with Bullish momentum.")
                     else:
-                        st.info(f"📈 **VERDICT: ACCEPTABLE ENTRY.**")
-                        st.write("The trend is up, but you are buying midway between Support and Resistance. Proceed with standard caution.")
+                        st.info(f"📈 **VERDICT: ACCEPTABLE ENTRY.**\nThe trend is up, but you are midway between Support and Resistance.")
                     
-                    st.write("### 📋 Your Trade Execution Plan")
-                    
-                    if trade_horizon == "Short-Term (Swing/Scalp)":
-                        target_price = r1
-                        target_reason = "(R1 Resistance Level)"
-                    else:
-                        target_price = current_price * 1.25
-                        target_reason = "(+25% Macro Target)"
-
+                    st.write("### 📋 Your Execution Plan")
+                    target_price = r1 if trade_horizon == "Short-Term (Swing/Scalp)" else current_price * 1.25
                     plan_data = [
                         {"Step": "1. Entry Strategy", "Details": f"Buy {affordable_shares} shares at/near ₹{current_price:.2f}"},
-                        {"Step": "2. Hard Stop-Loss", "Details": f"Sell everything if price closes below ₹{auto_stop_price:.2f} (ATR Floor)"},
-                        {"Step": f"3. Target Exit", "Details": f"Take profits near ₹{target_price:.2f} {target_reason}"}
+                        {"Step": "2. Hard Stop-Loss", "Details": f"Sell if price closes below ₹{auto_stop_price:.2f}"},
+                        {"Step": "3. Target Exit", "Details": f"Take profits near ₹{target_price:.2f}"}
                     ]
                     st.table(pd.DataFrame(plan_data))
                     
                 else:
-                    st.subheader("⚖️ Ramani's Action Plan")
-                    st.write(f"*Managing your existing {quantity} shares based on your average buy price.*")
+                    st.subheader("⚖️ Ramani's Portfolio Action Plan")
                     
                     if current_price <= auto_stop_price:
                         st.error(f"🚨 **EMERGENCY ACTION: STOP-LOSS TRIGGERED. SELL ALL {quantity} SHARES.**")
                     elif change_pct <= -15:
-                        if not long_term_bullish and current_rsi > 30:
-                            st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**")
-                        elif not macd_bullish and current_rsi > 40:
-                            st.warning("⏸️ **ACTION: PAUSE BUY (NEGATIVE MOMENTUM).**")
+                        # NEW: Stop the user from averaging down on bad stocks
+                        if not is_core:
+                            st.warning(f"🛑 **ACTION: DO NOT AVERAGE DOWN.**\n\nPrice dropped, but this is a **{grade}** stock. Averaging down on low-quality companies is a 'value trap'. Hold your current position and rely strictly on your Stop-Loss.")
+                        elif not long_term_bullish and current_rsi > 30:
+                            st.warning("⏸️ **ACTION: PAUSE BUY (BEAR MARKET TIER).**\n\nThe stock is in a macro downtrend. Wait for extreme oversold conditions (RSI < 30).")
                         else:
                             share_pct = 0.30 if change_pct <= -35 else 0.25 if change_pct <= -25 else 0.10
                             qty_to_buy = max(1, int(quantity * share_pct))
-                            st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.** (Ramani Dip Buy)")
+                            st.success(f"✅ **ACTION: BUY {qty_to_buy} MORE SHARES.**\n\nPrice dropped to a buy tier, and this is a **{grade}** company. It is safe to average down and accumulate.")
                     elif change_pct >= 25:
-                        if current_rsi > 70 and current_price > (hist['EMA_50'].iloc[-1] * 1.15): 
+                        # NEW: Encourage taking profits faster on bad stocks
+                        if not is_core:
+                             st.error(f"💰 **ACTION: SELL {quantity} SHARES (TAKE PROFITS!).**\n\nHit target on a **{grade}** stock. Do not hold low-quality stocks forever. Lock in the cash now.")
+                        elif current_rsi > 70 and current_price > (hist['EMA_50'].iloc[-1] * 1.15): 
                              share_pct = 1.0 if change_pct >= 100 else 0.40 if change_pct >= 60 else 0.30 if change_pct >= 45 else 0.20 if change_pct >= 35 else 0.10
                              qty_to_sell = max(1, int(quantity * share_pct))
                              st.error(f"💰 **ACTION: SELL {qty_to_sell} SHARES.** (Ramani Profit Taking)")
                         else:
-                             st.info("💎 **ACTION: HOLD YOUR WINNER.**")
+                             st.info(f"💎 **ACTION: HOLD YOUR WINNER.**\n\nTrend is strong and this is a **{grade}** stock. Let it compound.")
                     else:
-                        st.info("🧘 **ACTION: HOLD PATIENTLY.**")
+                        st.info(f"🧘 **ACTION: HOLD.**\n\nYou are in the safe zone. Current grade: **{grade}**.")
                         
                     st.divider()
                     
