@@ -12,18 +12,13 @@ class StockEvaluator:
     def _get_data(self):
         try:
             # --- THE ULTIMATE RATE-LIMIT BYPASS ---
-            # Instead of using the yfinance library, we directly query the raw public API endpoint.
-            # This skips the cookie/crumb security checks that are blocking your Streamlit app.
             url = f"https://query2.finance.yahoo.com/v8/finance/chart/{self.ticker}"
-            
-            # Grabbing 2 years of data ensures the 200-Day SMA calculates correctly
             params = {"interval": "1d", "range": "2y"}
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
             
             response = requests.get(url, params=params, headers=headers, timeout=10)
             data = response.json()
             
-            # Parse the raw JSON into a clean Pandas DataFrame
             result = data["chart"]["result"][0]
             timestamps = result["timestamp"]
             quote = result["indicators"]["quote"][0]
@@ -52,22 +47,47 @@ class StockEvaluator:
         df['RSI'] = 100 - (100 / (1 + rs))
         
         last_day = df.iloc[-2] 
+        current_price = float(df['Close'].iloc[-1])
         
         high = float(last_day['High'])
         low = float(last_day['Low'])
         close = float(last_day['Close'])
         
+        # --- CALCULATE FULL PIVOT LADDER ---
         pivot = (high + low + close) / 3
         r1 = (2 * pivot) - low
         s1 = (2 * pivot) - high
+        r2 = pivot + (high - low)
+        s2 = pivot - (high - low)
+        r3 = high + 2 * (pivot - low)
         
+        # --- DYNAMIC TARGET & ENTRY LOGIC ---
+        # If the stock is breaking out, the targets shift UP automatically.
+        if current_price > r2:
+            target = r3
+            entry = r2
+            stop = r1
+        elif current_price > r1:
+            target = r2
+            entry = r1
+            stop = pivot
+        elif current_price > pivot:
+            target = r1
+            entry = pivot
+            stop = s1
+        else:
+            target = pivot
+            entry = s1
+            stop = s2
+            
         return {
-            "current_price": float(df['Close'].iloc[-1]),
+            "current_price": current_price,
             "sma200": float(df['SMA200'].iloc[-1]) if not pd.isna(df['SMA200'].iloc[-1]) else 0.0,
             "rsi": float(df['RSI'].iloc[-1]) if not pd.isna(df['RSI'].iloc[-1]) else 50.0,
-            "p": pivot,
-            "r1": r1,
-            "s1": s1
+            "dynamic_target": target,
+            "dynamic_entry": entry,
+            "dynamic_stop": stop,
+            "p": pivot  # Keeping this for the score logic below
         }
 
     def evaluate(self):
@@ -101,9 +121,9 @@ class StockEvaluator:
             "RSI Status": "Overbought" if rsi > 70 else "Neutral/Oversold",
             "Recommendation": recom,
             "Confidence": f"{score}%",
-            "Target Price": round(tech['r1'], 2),
-            "Stop Loss": round(tech['s1'], 2),
-            "Recommended Price": round(tech['p'], 2)
+            "Target Price": round(tech['dynamic_target'], 2),
+            "Stop Loss": round(tech['dynamic_stop'], 2),
+            "Recommended Price": round(tech['dynamic_entry'], 2)
         }
 
 if __name__ == "__main__":
