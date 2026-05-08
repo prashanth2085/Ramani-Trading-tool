@@ -369,7 +369,7 @@ with tab2:
     # --- Input Row 1 ---
     eval_col1, eval_col2 = st.columns(2)
     with eval_col1:
-        eval_ticker = st.text_input("Ticker Symbol", value="OLECTRA.NS", key="eval_ticker")
+        eval_ticker = st.text_input("Ticker Symbol", value="OLECTRA", key="eval_ticker")
     with eval_col2:
         eval_avg_price = st.number_input("Average Buy Price", min_value=0.0, value=1600.0, key="eval_avg_price")
         
@@ -382,8 +382,9 @@ with tab2:
         
     send_alert = st.checkbox("📱 Send Telegram Alert on Evaluation")
         
-        if st.button("Evaluate Position", type="primary"):
+    if st.button("Evaluate Position", type="primary"):
         with st.spinner("Calculating quantitative metrics..."):
+            
             # --- AUTO-APPEND .NS BEHIND THE SCENES ---
             formatted_eval_ticker = eval_ticker.strip().upper()
             if not formatted_eval_ticker.endswith(".NS") and not formatted_eval_ticker.endswith(".BO"):
@@ -456,17 +457,3 @@ with tab2:
                             st.error(f"Failed to send: {resp.text}")
                     except Exception as e:
                         st.error(f"Telegram API Error: {e}")
-
-# --- MOTIVATIONAL FOOTER ---
-st.write("<br><br>", unsafe_allow_html=True)
-quotes = [
-    "\"The elements of good trading are (1) cutting losses, (2) cutting losses, and (3) cutting losses.\" – Ed Seykota",
-    "\"If you cannot control your emotions, you cannot control your money.\" – Warren Buffett",
-    "\"Plan your trade and trade your plan. Trust the math, not your gut.\"",
-    "\"Novices focus on what they can make. Professionals focus on what they can lose.\"",
-    "\"Do not anticipate and move without market confirmation. Being a little late in your trade is your insurance.\" – Jesse Livermore",
-    "\"Let your winners run, and cut your losses quickly.\"",
-    "\"The goal of a successful trader is to make the best trades. Money is secondary.\" – Alexander Elder",
-    "\"Amateurs want to be right. Professionals want to make money.\""
-]
-st.markdown(f"> *{random.choice(quotes)}*")
