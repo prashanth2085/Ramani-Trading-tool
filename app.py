@@ -415,16 +415,16 @@ with tab2:
                 
                 # ROW 3
                 colG, colH, colI = st.columns(3)
-                colG.metric("Recommended Entry", f"₹{result['Recommended Price']}")
-                colH.metric("Target Price", f"₹{result['Target Price']}")
-                colI.metric("Stop Loss", f"₹{result['Stop Loss']}")
-                
+                colG.metric("Recommended Entry", f"₹{result.get('Recommended Price', 'N/A')}")
+                colH.metric("Target Price", f"₹{result.get('Target Price', 'N/A')}")
+                colI.metric("Stop Loss", f"₹{result.get('Stop Loss', 'N/A')}")
+
                 st.divider()
-                
+
                 # --- TELEGRAM 1-LINER GENERATION ---
                 action = recom.split("/")[0].strip().lower()
-                
-                telegram_msg = f"{recom_color} {action}/{result['Ticker']}/{eval_trade_qty}units/₹{result['Current Price']}/confidence {result['Confidence']}/target ₹{result['Target Price']}"
+
+                telegram_msg = f"{recom_color} {action}/{result['Ticker']}/{eval_trade_qty}units/₹{result['Current Price']}/confidence {result['Confidence']}/target ₹{result.get('Target Price', 'N/A')}"
                 
                 st.info(f"**Generated Telegram Push:**\n\n`{telegram_msg}`")
                 
