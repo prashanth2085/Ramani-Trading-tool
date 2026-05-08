@@ -108,7 +108,7 @@ with tab1:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        ticker_input = st.text_input("Ticker Symbol (e.g., TATAPOWER)", value="TATAPOWER")
+        ticker_input = st.text_input("Ticker Symbol (e.g., TATAPOWER.NS)", value="TATAPOWER.NS")
 
     if st.session_state.trade_mode == "Manage Existing Portfolio":
         with col2:
@@ -134,6 +134,9 @@ with tab1:
                 formatted_ticker = ticker_input.strip().upper()
                 if not formatted_ticker.endswith(".NS"):
                     formatted_ticker += ".NS"
+                
+                # --- STRIP .NS FOR UI DISPLAY ---
+                clean_ticker_tab1 = formatted_ticker.split('.')[0]
                     
                 hist = fetch_stock_data(formatted_ticker)
                 funds = fetch_fundamentals(formatted_ticker)
@@ -201,7 +204,8 @@ with tab1:
                             grade, is_core = "⚠️ TRADING ONLY", False
                     
                     # --- DISPLAY LIVE STATS ---
-                    st.subheader(f"📊 Live Technical Dashboard: {formatted_ticker}")
+                    # Using clean_ticker_tab1 for display
+                    st.subheader(f"📊 Live Technical Dashboard: {clean_ticker_tab1}")
                     
                     r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
                     r1_c1.metric("Current Price", f"₹{current_price:.2f}", f"{change_pct:.2f}% from Base" if st.session_state.trade_mode == "Manage Existing Portfolio" else "Live")
@@ -386,9 +390,12 @@ with tab2:
             if "Error" in result:
                 st.error(result["Error"])
             else:
+                # --- STRIP .NS FOR UI DISPLAY IN TAB 2 ---
+                clean_ticker_tab2 = result['Ticker'].split('.')[0]
+
                 # --- UI DASHBOARD ---
                 st.divider()
-                st.subheader(f"📊 Evaluator Dashboard: {result['Ticker']}")
+                st.subheader(f"📊 Evaluator Dashboard: {clean_ticker_tab2}")
                 
                 # ROW 1
                 colA, colB, colC = st.columns(3)
@@ -422,9 +429,9 @@ with tab2:
                 st.divider()
 
                 # --- TELEGRAM 1-LINER GENERATION ---
-                action = recom.split("/")[0].strip().lower()
+                action = recom.split("/")[0].strip().capitalize()
 
-                telegram_msg = f"{recom_color} {action}/{result['Ticker']}/{eval_trade_qty}units/₹{result['Current Price']}/confidence {result['Confidence']}/target ₹{result.get('Target Price', 'N/A')}"
+                telegram_msg = f"{recom_color} {action}/{clean_ticker_tab2}/{eval_trade_qty}units/₹{result['Current Price']}/confidence {result['Confidence']}/target ₹{result.get('Target Price', 'N/A')}"
                 
                 st.info(f"**Generated Telegram Push:**\n\n`{telegram_msg}`")
                 
