@@ -428,7 +428,7 @@ with tab2:
                 
                 # ROW 3
                 colG, colH, colI = st.columns(3)
-                colG.metric("Recommended Entry", f"₹{result.get('Recommended Price', 'N/A')}")
+                colG.metric("Pullback Support (Buy Zone)", f"₹{result.get('Recommended Price', 'N/A')}")
                 colH.metric("Target Price", f"₹{result.get('Target Price', 'N/A')}")
                 colI.metric("Stop Loss", f"₹{result.get('Stop Loss', 'N/A')}")
 
