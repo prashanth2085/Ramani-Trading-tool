@@ -382,9 +382,14 @@ with tab2:
         
     send_alert = st.checkbox("📱 Send Telegram Alert on Evaluation")
         
-    if st.button("Evaluate Position", type="primary"):
+        if st.button("Evaluate Position", type="primary"):
         with st.spinner("Calculating quantitative metrics..."):
-            evaluator = StockEvaluator(eval_ticker, eval_avg_price, eval_buy_date)
+            # --- AUTO-APPEND .NS BEHIND THE SCENES ---
+            formatted_eval_ticker = eval_ticker.strip().upper()
+            if not formatted_eval_ticker.endswith(".NS") and not formatted_eval_ticker.endswith(".BO"):
+                formatted_eval_ticker += ".NS"
+                
+            evaluator = StockEvaluator(formatted_eval_ticker, eval_avg_price, eval_buy_date)
             result = evaluator.evaluate()
             
             if "Error" in result:
