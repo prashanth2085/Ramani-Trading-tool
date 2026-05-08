@@ -437,7 +437,8 @@ with tab2:
                 # --- TELEGRAM 1-LINER GENERATION ---
                 action = recom.split("/")[0].strip().capitalize()
 
-                telegram_msg = f"{recom_color} {action}/{clean_ticker_tab2}/{eval_trade_qty}units/₹{result['Current Price']}/confidence {result['Confidence']}/target ₹{result.get('Target Price', 'N/A')}"
+                # Swapped '/' for ' | ' to prevent Telegram from turning it into a blue link
+                telegram_msg = f"{recom_color} {action} | {clean_ticker_tab2} | {eval_trade_qty} units | ₹{result['Current Price']} | Confidence: {result['Confidence']} | Target: ₹{result.get('Target Price', 'N/A')}"
                 
                 st.info(f"**Generated Telegram Push:**\n\n`{telegram_msg}`")
                 
@@ -457,3 +458,17 @@ with tab2:
                             st.error(f"Failed to send: {resp.text}")
                     except Exception as e:
                         st.error(f"Telegram API Error: {e}")
+
+# --- MOTIVATIONAL FOOTER ---
+st.write("<br><br>", unsafe_allow_html=True)
+quotes = [
+    "\"The elements of good trading are (1) cutting losses, (2) cutting losses, and (3) cutting losses.\" – Ed Seykota",
+    "\"If you cannot control your emotions, you cannot control your money.\" – Warren Buffett",
+    "\"Plan your trade and trade your plan. Trust the math, not your gut.\"",
+    "\"Novices focus on what they can make. Professionals focus on what they can lose.\"",
+    "\"Do not anticipate and move without market confirmation. Being a little late in your trade is your insurance.\" – Jesse Livermore",
+    "\"Let your winners run, and cut your losses quickly.\"",
+    "\"The goal of a successful trader is to make the best trades. Money is secondary.\" – Alexander Elder",
+    "\"Amateurs want to be right. Professionals want to make money.\""
+]
+st.markdown(f"> *{random.choice(quotes)}*")
