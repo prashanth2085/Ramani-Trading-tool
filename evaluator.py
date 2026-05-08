@@ -1,7 +1,6 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import requests
 
 class StockEvaluator:
     def __init__(self, ticker, avg_price, purchase_date):
@@ -12,18 +11,17 @@ class StockEvaluator:
 
     def _get_data(self):
         try:
-            # --- ANTI-RATE-LIMIT DISGUISE ---
-            # Tricking Yahoo into thinking we are a normal Chrome browser
-            session = requests.Session()
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            })
+            # --- BYPASSING yf.Ticker TO AVOID RATE LIMITS ---
+            # yf.download is historically much less strict on Streamlit servers
+            df = yf.download(self.ticker, start=self.purchase_date, progress=False)
             
-            ticker_obj = yf.Ticker(self.ticker, session=session)
-            df = ticker_obj.history(start=self.purchase_date)
+            # --- FIX FOR THE VALUE ERROR WE SAW EARLIER ---
+            # If yfinance returns a MultiIndex (which broke the app before), we flatten it!
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.droplevel(1)
+                
             return df
         except Exception as e:
-            # If Yahoo rate-limits us, return an empty dataframe safely
             print(f"Data fetch error: {e}")
             return pd.DataFrame()
 
@@ -58,8 +56,8 @@ class StockEvaluator:
         }
 
     def evaluate(self):
-        if self.data.empty or len(self.data) < 2:
-            return {"Error": "Not enough data fetched to evaluate. Yahoo Finance may be rate-limiting your connection. Please wait a few minutes and try again."}
+        if self.data is None or self.data.empty or len(self.data) < 2:
+            return {"Error": "Not enough data fetched to evaluate. Yahoo Finance is heavily blocking the server right now."}
             
         tech = self.calculate_technicals()
         price = tech['current_price']
