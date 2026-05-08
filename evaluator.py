@@ -10,9 +10,14 @@ class StockEvaluator:
         self.data = self._get_data()
 
     def _get_data(self):
-        ticker_obj = yf.Ticker(self.ticker)
-        df = ticker_obj.history(start=self.purchase_date)
-        return df
+        try:
+            ticker_obj = yf.Ticker(self.ticker)
+            df = ticker_obj.history(start=self.purchase_date)
+            return df
+        except Exception as e:
+            # If Yahoo rate-limits us, return an empty dataframe safely
+            print(f"Data fetch error: {e}")
+            return pd.DataFrame()
 
     def calculate_technicals(self):
         df = self.data.copy()
@@ -46,7 +51,7 @@ class StockEvaluator:
 
     def evaluate(self):
         if self.data.empty or len(self.data) < 2:
-            return {"Error": "Not enough data fetched to evaluate."}
+            return {"Error": "Not enough data fetched to evaluate. Yahoo Finance may be rate-limiting your connection. Please wait a few minutes and try again."}
             
         tech = self.calculate_technicals()
         price = tech['current_price']
