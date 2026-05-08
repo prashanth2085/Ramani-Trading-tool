@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 
 class StockEvaluator:
     def __init__(self, ticker, avg_price, purchase_date):
@@ -11,7 +12,14 @@ class StockEvaluator:
 
     def _get_data(self):
         try:
-            ticker_obj = yf.Ticker(self.ticker)
+            # --- ANTI-RATE-LIMIT DISGUISE ---
+            # Tricking Yahoo into thinking we are a normal Chrome browser
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            })
+            
+            ticker_obj = yf.Ticker(self.ticker, session=session)
             df = ticker_obj.history(start=self.purchase_date)
             return df
         except Exception as e:
@@ -72,7 +80,6 @@ class StockEvaluator:
         elif score < 40:
             recom = "SELL / REDUCE"
             
-        # This is the crucial dictionary that includes the new keys!
         return {
             "Ticker": self.ticker,
             "Current Price": round(price, 2),
