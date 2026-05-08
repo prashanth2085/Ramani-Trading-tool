@@ -11,7 +11,6 @@ class StockEvaluator:
 
     def _get_data(self):
         try:
-            # --- THE ULTIMATE RATE-LIMIT BYPASS ---
             url = f"https://query2.finance.yahoo.com/v8/finance/chart/{self.ticker}"
             params = {"interval": "1d", "range": "2y"}
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
@@ -53,41 +52,54 @@ class StockEvaluator:
         low = float(last_day['Low'])
         close = float(last_day['Close'])
         
-        # --- CALCULATE FULL PIVOT LADDER ---
+        # --- CALCULATE AN EXTENDED PIVOT LADDER ---
         pivot = (high + low + close) / 3
+        range_hl = high - low
+        
         r1 = (2 * pivot) - low
         s1 = (2 * pivot) - high
-        r2 = pivot + (high - low)
-        s2 = pivot - (high - low)
+        r2 = pivot + range_hl
+        s2 = pivot - range_hl
         r3 = high + 2 * (pivot - low)
+        s3 = low - 2 * (high - pivot)
+        r4 = pivot + 3 * range_hl
         
-        # --- DYNAMIC TARGET & ENTRY LOGIC ---
-        # If the stock is breaking out, the targets shift UP automatically.
-        if current_price > r2:
-            target = r3
-            entry = r2
-            stop = r1
-        elif current_price > r1:
-            target = r2
-            entry = r1
-            stop = pivot
-        elif current_price > pivot:
-            target = r1
-            entry = pivot
-            stop = s1
-        else:
-            target = pivot
-            entry = s1
-            stop = s2
-            
+        # Create an array of support/resistance that scales way up and down
+        levels = [
+            s3, 
+            s2, 
+            s1, 
+            pivot, 
+            r1, 
+            r2, 
+            r3, 
+            r4, 
+            r4 + range_hl,       # R5
+            r4 + (2 * range_hl), # R6
+            r4 + (3 * range_hl)  # R7
+        ]
+        
+        # Filter the ladder based on where the live price actually is right now
+        resistances = [lvl for lvl in levels if lvl > current_price]
+        supports = [lvl for lvl in levels if lvl < current_price]
+        
+        # Target = Next immediate resistance (Fallback to 5% jump if it breaks above R7)
+        dynamic_target = resistances[0] if resistances else current_price * 1.05
+        
+        # Entry = Immediate support below price
+        dynamic_entry = supports[-1] if supports else current_price * 0.98
+        
+        # Stop = The support level below the entry
+        dynamic_stop = supports[-2] if len(supports) >= 2 else dynamic_entry * 0.98
+        
         return {
             "current_price": current_price,
             "sma200": float(df['SMA200'].iloc[-1]) if not pd.isna(df['SMA200'].iloc[-1]) else 0.0,
             "rsi": float(df['RSI'].iloc[-1]) if not pd.isna(df['RSI'].iloc[-1]) else 50.0,
-            "dynamic_target": target,
-            "dynamic_entry": entry,
-            "dynamic_stop": stop,
-            "p": pivot  # Keeping this for the score logic below
+            "dynamic_target": dynamic_target,
+            "dynamic_entry": dynamic_entry,
+            "dynamic_stop": dynamic_stop,
+            "p": pivot
         }
 
     def evaluate(self):
