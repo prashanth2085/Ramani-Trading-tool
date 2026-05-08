@@ -67,6 +67,7 @@ class StockEvaluator:
         elif score < 40:
             recom = "SELL / REDUCE"
             
+        # This is the crucial dictionary that includes the new keys!
         return {
             "Ticker": self.ticker,
             "Current Price": round(price, 2),
