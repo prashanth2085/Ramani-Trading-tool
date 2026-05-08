@@ -362,21 +362,88 @@ with tab1:
 with tab2:
     st.header("Position Evaluator")
     
-    eval_col1, eval_col2, eval_col3 = st.columns(3)
+    # --- Input Row 1 ---
+    eval_col1, eval_col2 = st.columns(2)
     with eval_col1:
         eval_ticker = st.text_input("Ticker Symbol", value="OLECTRA.NS", key="eval_ticker")
     with eval_col2:
         eval_avg_price = st.number_input("Average Buy Price", min_value=0.0, value=1600.0, key="eval_avg_price")
+        
+    # --- Input Row 2 ---
+    eval_col3, eval_col4 = st.columns(2)
     with eval_col3:
         eval_buy_date = st.date_input("Purchase Date", key="eval_buy_date")
+    with eval_col4:
+        eval_trade_qty = st.number_input("Trade Quantity (For Alert)", min_value=1, value=5, key="eval_qty")
+        
+    send_alert = st.checkbox("📱 Send Telegram Alert on Evaluation")
         
     if st.button("Evaluate Position", type="primary"):
         with st.spinner("Calculating quantitative metrics..."):
             evaluator = StockEvaluator(eval_ticker, eval_avg_price, eval_buy_date)
             result = evaluator.evaluate()
             
-            st.subheader("Evaluation Results")
-            st.json(result) 
+            if "Error" in result:
+                st.error(result["Error"])
+            else:
+                # --- UI DASHBOARD ---
+                st.divider()
+                st.subheader(f"📊 Evaluator Dashboard: {result['Ticker']}")
+                
+                # ROW 1
+                colA, colB, colC = st.columns(3)
+                colA.metric("Current Price", f"₹{result['Current Price']}")
+                pl_val = result['P/L %']
+                pl_color = "normal" if not pl_val.startswith("-") else "inverse"
+                colB.metric("P/L %", pl_val, pl_val, delta_color=pl_color)
+                colC.metric("System Confidence", result['Confidence'])
+                
+                st.write("<br>", unsafe_allow_html=True)
+                
+                # ROW 2
+                colD, colE, colF = st.columns(3)
+                trend_emoji = "🐂 Bullish" if result['Institutional Trend'] == "Bullish" else "🐻 Bearish"
+                colD.metric("200-Day SMA Trend", trend_emoji)
+                rsi_emoji = "🔥 Overbought" if result['RSI Status'] == "Overbought" else "🧊 Neutral"
+                colE.metric("Momentum (RSI)", rsi_emoji)
+                
+                recom = result['Recommendation']
+                recom_color = "🟢" if "BUY" in recom else "🔴" if "SELL" in recom else "🟡"
+                colF.metric("Final Verdict", f"{recom_color} {recom}")
+                
+                st.write("<br>", unsafe_allow_html=True)
+                
+                # ROW 3
+                colG, colH, colI = st.columns(3)
+                colG.metric("Recommended Entry", f"₹{result['Recommended Price']}")
+                colH.metric("Target Price", f"₹{result['Target Price']}")
+                colI.metric("Stop Loss", f"₹{result['Stop Loss']}")
+                
+                st.divider()
+                
+                # --- TELEGRAM 1-LINER GENERATION ---
+                action = recom.split("/")[0].strip().lower()
+                
+                telegram_msg = f"{recom_color} {action}/{result['Ticker']}/{eval_trade_qty}units/₹{result['Current Price']}/confidence {result['Confidence']}/target ₹{result['Target Price']}"
+                
+                st.info(f"**Generated Telegram Push:**\n\n`{telegram_msg}`")
+                
+                # --- SEND TO TELEGRAM LOGIC ---
+                if send_alert:
+                    # HARDCODED CREDENTIALS
+                    bot_token = "8701094564:AAFQER8tQAl2NwGEkKsY1LTV5zUP_7gT4Tg"
+                    chat_id = "7927166007"
+                    
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    payload = {"chat_id": chat_id, "text": telegram_msg}
+                    try:
+                        resp = requests.post(url, json=payload)
+                        if resp.status_code == 200:
+                            st.success("✅ Successfully pushed to Telegram!")
+                        else:
+                            st.error(f"Failed to send: {resp.text}")
+                    except Exception as e:
+                        st.error(f"Telegram API Error: {e}")
 
 # --- MOTIVATIONAL FOOTER ---
 st.write("<br><br>", unsafe_allow_html=True)
