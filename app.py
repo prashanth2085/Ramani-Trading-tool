@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import random
+import re  # --- NEW IMPORT FOR SMART TEXT PARSING ---
 
 # --- NEW IMPORT ---
 from evaluator import StockEvaluator
@@ -79,13 +80,12 @@ st.write("Ramani's Core Engine | Technicals + Pivot Structure + Fundamental Grad
 st.divider()
 
 # --- TABS SETUP ---
-tab1, tab2 = st.tabs(["📊 Single Stock Analysis", "🎯 Position Evaluator"])
+tab1, tab2, tab3 = st.tabs(["📊 Single Stock Analysis", "🎯 Position Evaluator", "📦 Bulk Auto-Scanner"])
 
 # ==========================================
 # TAB 1: YOUR EXISTING APP
 # ==========================================
 with tab1:
-    # 2. AESTHETIC MODE SELECTOR 
     if 'trade_mode' not in st.session_state:
         st.session_state.trade_mode = "Manage Existing Portfolio"
 
@@ -104,7 +104,6 @@ with tab1:
 
     st.write("<br>", unsafe_allow_html=True)
 
-    # 3. Create the User Input Form
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -127,7 +126,6 @@ with tab1:
 
     st.write("<br>", unsafe_allow_html=True)
 
-    # 4. The "Analyze" Button Logic
     if st.button("🔍 Analyze Live Market", type="primary"):
         with st.spinner("Analyzing Technicals and Fundamentals..."):
             try:
@@ -135,7 +133,6 @@ with tab1:
                 if not formatted_ticker.endswith(".NS"):
                     formatted_ticker += ".NS"
                 
-                # --- STRIP .NS FOR UI DISPLAY ---
                 clean_ticker_tab1 = formatted_ticker.split('.')[0]
                     
                 hist = fetch_stock_data(formatted_ticker)
@@ -146,7 +143,6 @@ with tab1:
                 else:
                     current_price = hist['Close'].iloc[-1]
                     
-                    # --- CALCULATE ALL INDICATORS ---
                     hist['RSI'] = calculate_rsi(hist['Close'])
                     current_rsi = hist['RSI'].iloc[-1]
                     
@@ -182,7 +178,6 @@ with tab1:
                     change_pct = ((current_price - base_price) / base_price) * 100
                     affordable_shares = int(fresh_capital / current_price) if current_price > 0 else 0
                     
-                    # --- FUNDAMENTAL EVALUATION ---
                     score = 0
                     grade = "UNKNOWN"
                     is_core = False
@@ -203,8 +198,6 @@ with tab1:
                         else:
                             grade, is_core = "⚠️ TRADING ONLY", False
                     
-                    # --- DISPLAY LIVE STATS ---
-                    # Using clean_ticker_tab1 for display
                     st.subheader(f"📊 Live Technical Dashboard: {clean_ticker_tab1}")
                     
                     r1_c1, r1_c2, r1_c3, r1_c4 = st.columns(4)
@@ -221,7 +214,6 @@ with tab1:
                     
                     st.divider()
 
-                    # --- VISUAL PIVOT LADDER (PLOTLY) ---
                     st.write("**📍 Today's Pivot Levels (Support & Resistance Ladder)**")
                     fig = go.Figure()
                     
@@ -241,7 +233,6 @@ with tab1:
                     st.plotly_chart(fig, use_container_width=True)
                     st.divider()
 
-                    # --- FUNDAMENTAL DASHBOARD WITH DISCLAIMER ---
                     st.subheader("🏢 Fundamental Quality Filter")
                     st.info("⚠️ **Disclaimer:** Yahoo Finance frequently blocks or omits balance sheet data for Indian stocks. If you see 'N/A' below, let this app drive your technical entries, but manually verify the company's fundamentals on **Screener.in** before making long-term core investments.")
                     
@@ -277,7 +268,6 @@ with tab1:
                         st.warning("Fundamental data could not be retrieved from the exchange for this ticker.")
                     st.divider()
 
-                    # --- CONDITIONAL DISPLAY: ACTION PLANS ---
                     if st.session_state.trade_mode == "Scout New Trade":
                         st.subheader("🚀 New Trade Blueprint")
                         
@@ -361,19 +351,17 @@ with tab1:
                     st.error(f"An error occurred: {e}")
 
 # ==========================================
-# TAB 2: NEW EVALUATOR MODULE
+# TAB 2: POSITION EVALUATOR
 # ==========================================
 with tab2:
-    st.header("Position Evaluator")
+    st.header("🎯 Position Evaluator")
     
-    # --- Input Row 1 ---
     eval_col1, eval_col2 = st.columns(2)
     with eval_col1:
         eval_ticker = st.text_input("Ticker Symbol", value="OLECTRA", key="eval_ticker")
     with eval_col2:
         eval_avg_price = st.number_input("Average Buy Price", min_value=0.0, value=1600.0, key="eval_avg_price")
         
-    # --- Input Row 2 ---
     eval_col3, eval_col4 = st.columns(2)
     with eval_col3:
         eval_buy_date = st.date_input("Purchase Date", key="eval_buy_date")
@@ -385,7 +373,6 @@ with tab2:
     if st.button("Evaluate Position", type="primary"):
         with st.spinner("Calculating quantitative metrics..."):
             
-            # --- AUTO-APPEND .NS BEHIND THE SCENES ---
             formatted_eval_ticker = eval_ticker.strip().upper()
             if not formatted_eval_ticker.endswith(".NS") and not formatted_eval_ticker.endswith(".BO"):
                 formatted_eval_ticker += ".NS"
@@ -396,14 +383,11 @@ with tab2:
             if "Error" in result:
                 st.error(result["Error"])
             else:
-                # --- STRIP .NS FOR UI DISPLAY IN TAB 2 ---
                 clean_ticker_tab2 = result['Ticker'].split('.')[0]
 
-                # --- UI DASHBOARD ---
                 st.divider()
                 st.subheader(f"📊 Evaluator Dashboard: {clean_ticker_tab2}")
                 
-                # ROW 1
                 colA, colB, colC = st.columns(3)
                 colA.metric("Current Price", f"₹{result['Current Price']}")
                 pl_val = result['P/L %']
@@ -413,7 +397,6 @@ with tab2:
                 
                 st.write("<br>", unsafe_allow_html=True)
                 
-                # ROW 2
                 colD, colE, colF = st.columns(3)
                 trend_emoji = "🐂 Bullish" if result['Institutional Trend'] == "Bullish" else "🐻 Bearish"
                 colD.metric("200-Day SMA Trend", trend_emoji)
@@ -426,7 +409,6 @@ with tab2:
                 
                 st.write("<br>", unsafe_allow_html=True)
                 
-                # ROW 3
                 colG, colH, colI = st.columns(3)
                 colG.metric("Pullback Support (Buy Zone)", f"₹{result.get('Recommended Price', 'N/A')}")
                 colH.metric("Target Price", f"₹{result.get('Target Price', 'N/A')}")
@@ -434,20 +416,14 @@ with tab2:
 
                 st.divider()
 
-                # --- TELEGRAM 1-LINER GENERATION ---
                 action = recom.split("/")[0].strip().capitalize()
-
-                # Swapped '/' for ' | ' to prevent Telegram from turning it into a blue link
                 telegram_msg = f"{recom_color} {action} | {clean_ticker_tab2} | {eval_trade_qty} units | ₹{result['Current Price']} | Confidence: {result['Confidence']} | Target: ₹{result.get('Target Price', 'N/A')}"
                 
                 st.info(f"**Generated Telegram Push:**\n\n`{telegram_msg}`")
                 
-                # --- SEND TO TELEGRAM LOGIC ---
                 if send_alert:
-                    # HARDCODED CREDENTIALS
                     bot_token = "8701094564:AAFQER8tQAl2NwGEkKsY1LTV5zUP_7gT4Tg"
                     chat_id = "7927166007"
-                    
                     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
                     payload = {"chat_id": chat_id, "text": telegram_msg}
                     try:
@@ -458,6 +434,90 @@ with tab2:
                             st.error(f"Failed to send: {resp.text}")
                     except Exception as e:
                         st.error(f"Telegram API Error: {e}")
+
+# ==========================================
+# TAB 3: BULK AUTO-SCANNER
+# ==========================================
+with tab3:
+    st.header("📦 Bulk Auto-Scanner")
+    st.write("Enter your symbols and quantities to generate instant Telegram alerts for multiple stocks at once.")
+    st.info("💡 **Format Check:** You can be lazy with typing! `OIL32`, `OIL:32`, `OIL-32`, or `OIL 32` all work. Just separate each stock with a comma.")
+    
+    bulk_input = st.text_area("Watchlist Input", value="OIL32, GRINFRA15, ADANIPORTS 6", height=100)
+    
+    send_bulk_alert = st.checkbox("📱 Push All Alerts to Telegram")
+    
+    if st.button("Scan Bulk Portfolio", type="primary"):
+        parsed_items = []
+        
+        # --- SMART PARSING LOGIC ---
+        for item in bulk_input.split(','):
+            item = item.strip().upper()
+            if not item: continue
+            
+            # Catch items formatted with spaces or punctuation (e.g. OIL-32, OIL: 32)
+            if re.search(r'[-:\s]', item):
+                parts = re.split(r'[-:\s]+', item)
+                if len(parts) >= 2 and parts[1].isdigit():
+                    parsed_items.append((parts[0], int(parts[1])))
+            else:
+                # Catch items smushed together (e.g. OIL32)
+                match = re.match(r"([A-Z]+)(\d+)", item)
+                if match:
+                    parsed_items.append((match.group(1), int(match.group(2))))
+        
+        if not parsed_items:
+            st.warning("❌ No valid tickers found. Please check your format (e.g., OIL32, GRINFRA15).")
+        else:
+            st.success(f"✅ Found {len(parsed_items)} valid stocks. Scanning the market...")
+            
+            all_alerts = []
+            progress_bar = st.progress(0)
+            
+            for idx, (ticker, qty) in enumerate(parsed_items):
+                formatted_ticker = ticker if ticker.endswith(".NS") or ticker.endswith(".BO") else f"{ticker}.NS"
+                clean_ticker = ticker.split('.')[0]
+                
+                # We feed the evaluator a "dummy" high buy price to trigger clean mathematical signals
+                evaluator = StockEvaluator(formatted_ticker, avg_price=99999.0, purchase_date="2024-01-01")
+                result = evaluator.evaluate()
+                
+                if "Error" not in result:
+                    recom = result['Recommendation']
+                    recom_color = "🟢" if "BUY" in recom else "🔴" if "SELL" in recom else "🟡"
+                    action = recom.split("/")[0].strip().capitalize()
+                    
+                    msg = f"{recom_color} {action} | {clean_ticker} | {qty} units | ₹{result['Current Price']} | Entry: ₹{result.get('Recommended Price', 'N/A')} | Target: ₹{result.get('Target Price', 'N/A')}"
+                    all_alerts.append(msg)
+                else:
+                    all_alerts.append(f"⚠️ Error | {clean_ticker} | Rate limited or invalid ticker.")
+                    
+                progress_bar.progress((idx + 1) / len(parsed_items))
+            
+            # --- DISPLAY DASHBOARD OUTPUT ---
+            st.divider()
+            st.subheader("📋 Bulk Scan Results")
+            
+            final_text_block = "\n\n".join(all_alerts)
+            st.info(f"**Generated Alerts:**\n\n```text\n{final_text_block}\n```")
+            
+            # --- TELEGRAM LOGIC ---
+            if send_bulk_alert and all_alerts:
+                bot_token = "8701094564:AAFQER8tQAl2NwGEkKsY1LTV5zUP_7gT4Tg"
+                chat_id = "7927166007"
+                url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                
+                tg_msg = "📦 *Bulk Portfolio Scan*\n\n" + "\n".join(all_alerts)
+                
+                payload = {"chat_id": chat_id, "text": tg_msg, "parse_mode": "Markdown"}
+                try:
+                    resp = requests.post(url, json=payload)
+                    if resp.status_code == 200:
+                        st.success("✅ Bulk push sent to Telegram successfully!")
+                    else:
+                        st.error(f"Failed to send: {resp.text}")
+                except Exception as e:
+                    st.error(f"Telegram API Error: {e}")
 
 # --- MOTIVATIONAL FOOTER ---
 st.write("<br><br>", unsafe_allow_html=True)
