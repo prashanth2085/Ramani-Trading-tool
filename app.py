@@ -416,8 +416,9 @@ with tab2:
 
                 st.divider()
 
-                action = recom.split("/")[0].strip().capitalize()
-                telegram_msg = f"{recom_color} {action} | {clean_ticker_tab2} | {eval_trade_qty} units | ₹{result['Current Price']} | Confidence: {result['Confidence']} | Target: ₹{result.get('Target Price', 'N/A')}"
+                # --- UPDATED TAB 2 ALERT STRING ---
+                action = recom.split("/")[0].strip().upper()
+                telegram_msg = f"{recom_color} {action} | {clean_ticker_tab2} | {eval_trade_qty} units | CMP: ₹{result['Current Price']} | STOPLOSS: ₹{result.get('Stop Loss', 'N/A')} | TARGET LIMIT: ₹{result.get('Target Price', 'N/A')}"
                 
                 st.info(f"**Generated Telegram Push:**\n\n`{telegram_msg}`")
                 
@@ -485,9 +486,10 @@ with tab3:
                 if "Error" not in result:
                     recom = result['Recommendation']
                     recom_color = "🟢" if "BUY" in recom else "🔴" if "SELL" in recom else "🟡"
-                    action = recom.split("/")[0].strip().capitalize()
                     
-                    msg = f"{recom_color} {action} | {clean_ticker} | {qty} units | ₹{result['Current Price']} | Support: ₹{result.get('Recommended Price', 'N/A')} | Ceiling: ₹{result.get('Target Price', 'N/A')}"
+                    # --- UPDATED TAB 3 ALERT STRING ---
+                    action = recom.split("/")[0].strip().upper()
+                    msg = f"{recom_color} {action} | {clean_ticker} | {qty} units | CMP: ₹{result['Current Price']} | STOPLOSS: ₹{result.get('Stop Loss', 'N/A')} | TARGET LIMIT: ₹{result.get('Target Price', 'N/A')}"
                     all_alerts.append(msg)
                 else:
                     all_alerts.append(f"⚠️ Error | {clean_ticker} | Rate limited or invalid ticker.")
