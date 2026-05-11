@@ -487,7 +487,7 @@ with tab3:
                     recom_color = "🟢" if "BUY" in recom else "🔴" if "SELL" in recom else "🟡"
                     action = recom.split("/")[0].strip().capitalize()
                     
-                    msg = f"{recom_color} {action} | {clean_ticker} | {qty} units | ₹{result['Current Price']} | Entry: ₹{result.get('Recommended Price', 'N/A')} | Target: ₹{result.get('Target Price', 'N/A')}"
+                    msg = f"{recom_color} {action} | {clean_ticker} | {qty} units | ₹{result['Current Price']} | Support: ₹{result.get('Recommended Price', 'N/A')} | Ceiling: ₹{result.get('Target Price', 'N/A')}"
                     all_alerts.append(msg)
                 else:
                     all_alerts.append(f"⚠️ Error | {clean_ticker} | Rate limited or invalid ticker.")
