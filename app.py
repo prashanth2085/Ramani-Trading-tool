@@ -437,11 +437,11 @@ with tab2:
                         st.error(f"Telegram API Error: {e}")
 
 # ==========================================
-# TAB 3: BULK AUTO-SCANNER
+# TAB 3: BULK AUTO-SCANNER & MACRO HEALTH
 # ==========================================
 with tab3:
-    st.header("📦 Bulk Auto-Scanner")
-    st.write("Enter your symbols and quantities to generate instant Telegram alerts for multiple stocks at once.")
+    st.header("📦 Bulk Auto-Scanner & Macro Health")
+    st.write("Enter your symbols and quantities to generate instant Telegram alerts. The engine will automatically check the NIFTY 50 index first to provide broader market context.")
     st.info("💡 **Format Check:** You can be lazy with typing! `OIL32`, `OIL:32`, `OIL-32`, or `OIL 32` all work. Just separate each stock with a comma.")
     
     bulk_input = st.text_area("Watchlist Input", value="OIL32, GRINFRA15, ADANIPORTS 6", height=100)
@@ -472,6 +472,20 @@ with tab3:
         else:
             st.success(f"✅ Found {len(parsed_items)} valid stocks. Scanning the market...")
             
+            # --- MACRO HEALTH CHECK (NIFTY 50) ---
+            nifty_evaluator = StockEvaluator("^NSEI", avg_price=99999.0, purchase_date="2024-01-01")
+            nifty_result = nifty_evaluator.evaluate()
+            
+            macro_header = ""
+            if "Error" not in nifty_result:
+                nifty_price = nifty_result['Current Price']
+                if nifty_result['Institutional Trend'] == "Bullish":
+                    macro_header = f"📈 MACRO TREND: BULLISH (NIFTY @ {nifty_price})\n💡 Advice: Market is above 200-SMA. Favorable environment for holding and accumulating breakouts."
+                else:
+                    macro_header = f"🚨 MACRO TREND: BEARISH (NIFTY @ {nifty_price})\n⚠️ Advice: Market is below 200-SMA! High risk environment. Tighten stop-losses and pause fresh buying."
+            else:
+                macro_header = "⚠️ MACRO TREND: NIFTY Data Unavailable"
+
             all_alerts = []
             progress_bar = st.progress(0)
             
@@ -487,7 +501,6 @@ with tab3:
                     recom = result['Recommendation']
                     recom_color = "🟢" if "BUY" in recom else "🔴" if "SELL" in recom else "🟡"
                     
-                    # --- UPDATED TAB 3 ALERT STRING ---
                     action = recom.split("/")[0].strip().upper()
                     msg = f"{recom_color} {action} | {clean_ticker} | {qty} units | CMP: ₹{result['Current Price']} | STOPLOSS: ₹{result.get('Stop Loss', 'N/A')} | TARGET LIMIT: ₹{result.get('Target Price', 'N/A')}"
                     all_alerts.append(msg)
@@ -500,7 +513,7 @@ with tab3:
             st.divider()
             st.subheader("📋 Bulk Scan Results")
             
-            final_text_block = "\n\n".join(all_alerts)
+            final_text_block = f"{macro_header}\n\n" + "-"*40 + "\n\n" + "\n\n".join(all_alerts)
             st.info(f"**Generated Alerts:**\n\n```text\n{final_text_block}\n```")
             
             # --- TELEGRAM LOGIC ---
@@ -509,7 +522,7 @@ with tab3:
                 chat_id = "7927166007"
                 url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
                 
-                tg_msg = "📦 *Bulk Portfolio Scan*\n\n" + "\n".join(all_alerts)
+                tg_msg = f"📦 *Bulk Portfolio Scan*\n\n*{macro_header}*\n\n" + "\n".join(all_alerts)
                 
                 payload = {"chat_id": chat_id, "text": tg_msg, "parse_mode": "Markdown"}
                 try:
